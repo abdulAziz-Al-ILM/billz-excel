@@ -9,7 +9,7 @@ import requests
 # ==========================================
 TOKEN = os.environ.get('BOT_TOKEN', 'SIZNING_BOT_TOKENINGIZ')
 BILLZ_API_KEY = os.environ.get('BILLZ_API_KEY', 'SIZNING_API_KALITINGIZ')
-BILLZ_API_URL = 'https://api.billz.uz/v1' # Billz API manzili (hujjatga qarab o'zgarishi mumkin)
+BILLZ_API_URL = 'https://billzuz.notion.site/API-c2f91aa254f94f8eb7c1b26415dcb25b' # Billz API manzili (hujjatga qarab o'zgarishi mumkin)
 
 # Ruxsat etilgan xodimlar ro'yxati (Whitelist)
 allowed_users_str = os.environ.get('ALLOWED_USERS', '') 
