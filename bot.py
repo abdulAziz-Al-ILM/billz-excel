@@ -13,7 +13,6 @@ ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',
 # 🔥 YANILANGAN MANZILLAR
 BILLZ_API_BASE = 'https://api-admin.billz.ai/v2'
 BILLZ_API_POST_URL = f'{BILLZ_API_BASE}/product?Billz-Response-Channel=HTTP'
-# 📸 Siz topgan ANIQLANGAN rasm yuklash manzili
 BILLZ_UPLOAD_URL = 'https://sss.billz.ai/api/v1/upload' 
 
 # 🔥 SIZNING BAZA ID RAQAMLARINGIZ
@@ -27,7 +26,25 @@ drafts = {}
 db = {}
 CURRENT_ACCESS_TOKEN = None 
 
-CATEGORIES = ["elektr", "santexnika", "injeneriya", "suxoy smest", "melich", "xoztovar", "instrument", "addelka", "kraska imulsiya", "kraska", "utipleniya", "pena silikon", "plintus", "kafel"]
+# 🗂 BIZ TOPGAN TOIFALAR BAZASI (UUID BILAN)
+CATEGORIES_DB = {
+    "elektr jihozlari": "59ce55e6-0b1e-4be2-a646-87f3c8e95876", 
+    "santexnika": "79233dfd-cec2-47ca-a787-403829e554d4", 
+    "qurilish qorishmalari": "", 
+    "bo'yoqlar va emulsiya": "3a34e878-0f32-410c-bd0c-fc62c2ab8f60", 
+    "kafel va plitkalar": "0325476b-8cab-4da1-94ec-ade1727f53ac", 
+    "asbob-uskunalar": "7552b39d-aff3-4b21-a756-7014c17e8cbc",
+    "issiqlik izolyatsiyasi": "03147648-a1bc-433f-a444-9cfaa2806c39", 
+    "xo'jalik mollari": "45e95524-5047-43a6-8cf3-79e9f08becb8", 
+    "pena, silikon va yelimlar": "6ed8fe11-e13e-4eb4-bfb4-8f69343695d1",
+    "pardozlash materiallari": "335d4496-d096-478f-a813-73c21f1fc129", 
+    "mayda qotirish vositalari": "4327ed6a-a49d-4966-98ff-34dd439f8254",
+    "plintus va profillar": "a4bc6969-da19-4455-96dd-5de4aea6f441", 
+    "muhandislik tizimlari": "f53dfb0f-6113-4a9e-b913-09c44cbbef10", 
+    "boshqa": "" 
+}
+
+CATEGORIES = list(CATEGORIES_DB.keys())
 UNITS = ["dona", "metr", "litr", "kg", "quti", "komplekt", "rulon"]
 
 def is_allowed(message):
@@ -139,7 +156,7 @@ def handle_pricing(call):
         drafts[chat_id]['retail'] = round(cost * 1.10, 2)
         drafts[chat_id]['wholesale'] = round(cost * 1.07, 2)
         bot.edit_message_text(f"✅ Standart narxlar:\nChakana: {drafts[chat_id]['retail']}\nOptom: {drafts[chat_id]['wholesale']}", chat_id, call.message.message_id)
-        bot.register_next_step_handler(bot.send_message(chat_id, "7️⃣ Qanchadan boshlab optom hisoblanadi? (Raqam):"), step_optom_limit)
+        bot.register_next_step_handler(bot.send_message(chat_id, "7️⃣ Qanchadan boshlab ogohlantirsin (Kam qoldiq signali)?:"), step_signal)
     else:
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("💰 Aniq narx yozaman", callback_data="man_amount"), InlineKeyboardButton("📊 Foiz yozaman", callback_data="man_percent"))
@@ -163,49 +180,37 @@ def step_man_wholesale(message):
     chat_id = message.chat.id
     val = float(message.text.replace(',', '.'))
     drafts[chat_id]['wholesale'] = val if drafts[chat_id]['man_type'] == 'man_amount' else round(drafts[chat_id]['cost'] * (1 + val/100), 2)
-    bot.register_next_step_handler(bot.send_message(chat_id, "7️⃣ Qanchadan boshlab optom hisoblanadi? (Raqam):"), step_optom_limit)
-
-def step_optom_limit(message):
-    drafts[message.chat.id]['optom_limit'] = message.text
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(*[InlineKeyboardButton(c.capitalize(), callback_data=f"cat_{c}") for c in CATEGORIES])
-    markup.add(InlineKeyboardButton("➕ Yangi qo'shish", callback_data="cat_new"))
-    bot.send_message(message.chat.id, "8️⃣ Katalogni tanlang:", reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('cat_'))
-def step_category(call):
-    chat_id = call.message.chat.id
-    if call.data == 'cat_new':
-        bot.register_next_step_handler(bot.edit_message_text("Yangi katalog nomini yozing:", chat_id, call.message.message_id), add_cat)
-    else:
-        drafts[chat_id]['category'] = call.data.split('_')[1]
-        bot.register_next_step_handler(bot.edit_message_text("9️⃣ Firmani kiriting:", chat_id, call.message.message_id), step_brand)
-
-def add_cat(message):
-    CATEGORIES.append(message.text.lower())
-    drafts[message.chat.id]['category'] = message.text.lower()
-    bot.register_next_step_handler(bot.send_message(message.chat.id, "9️⃣ Firmani kiriting:"), step_brand)
-
-def step_brand(message):
-    drafts[message.chat.id]['brand'] = message.text
-    bot.register_next_step_handler(bot.send_message(message.chat.id, "🔟 Qancha qolganda signal bersin?:"), step_signal)
+    bot.register_next_step_handler(bot.send_message(chat_id, "7️⃣ Qanchadan boshlab ogohlantirsin (Kam qoldiq signali)?:"), step_signal)
 
 def step_signal(message):
     drafts[message.chat.id]['signal'] = message.text
-    bot.register_next_step_handler(bot.send_message(message.chat.id, "1️⃣1️⃣ Hozir nechta keldi (Qoldiq)?:"), step_stock)
+    bot.register_next_step_handler(bot.send_message(message.chat.id, "8️⃣ Hozir nechta keldi (Qoldiq)?:"), step_stock)
 
 def step_stock(message):
     chat_id = message.chat.id
     drafts[chat_id]['stock'] = message.text
+    markup = InlineKeyboardMarkup(row_width=2)
+    # To'g'ri nomlar menyuga chiqariladi
+    markup.add(*[InlineKeyboardButton(c.capitalize(), callback_data=f"cat_{c}") for c in CATEGORIES])
+    bot.send_message(chat_id, "9️⃣ Katalogni tanlang:", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('cat_'))
+def step_category(call):
+    chat_id = call.message.chat.id
+    drafts[chat_id]['category'] = call.data.split('_')[1]
+    bot.register_next_step_handler(bot.edit_message_text("🔟 Brend nomini kiriting:", chat_id, call.message.message_id), step_brand)
+
+def step_brand(message):
+    drafts[message.chat.id]['brand'] = message.text
     markup = InlineKeyboardMarkup(row_width=3)
     markup.add(*[InlineKeyboardButton(u, callback_data=f"unit_{u}") for u in UNITS])
-    bot.send_message(chat_id, "1️⃣2️⃣ O'lchov birligini tanlang:", reply_markup=markup)
+    bot.send_message(message.chat.id, "1️⃣1️⃣ O'lchov birligini tanlang:", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('unit_'))
 def step_unit(call):
     chat_id = call.message.chat.id
     drafts[chat_id]['unit'] = call.data.split('_')[1]
-    bot.register_next_step_handler(bot.edit_message_text("1️⃣3️⃣ Izoh kiriting (yo'q bo'lsa '-' qo'ying):", chat_id, call.message.message_id), step_comment)
+    bot.register_next_step_handler(bot.edit_message_text("1️⃣2️⃣ Izoh kiriting (yo'q bo'lsa '-' qo'ying):", chat_id, call.message.message_id), step_comment)
 
 def step_comment(message):
     chat_id = message.chat.id
@@ -213,7 +218,7 @@ def step_comment(message):
     save_to_billz(message)
 
 # ==========================================
-# 🚀 4. BILLZ 2.0 GA MUKAMMAL KLON PAYLOAD BILAN YUBORISH
+# 🚀 4. BILLZ 2.0 GA MUKAMMAL YUBORISH
 # ==========================================
 def save_to_billz(message):
     chat_id = message.chat.id
@@ -223,16 +228,16 @@ def save_to_billz(message):
     cost_val = float(d['cost'])
     retail_val = float(d['retail'])
     wholesale_val = float(d['wholesale'])
-    stock_val = float(d['stock'])
+    stock_val = float(d.get('stock', 0))
+    signal_val = float(d.get('signal', 0))
     
-    # 📸 1-QADAM: RASMNI TELEGRAMDAN OLIB BILLZ'GA YUKLASH
+    # 📸 1-QADAM: RASMNI TELEGRAMDAN OLIB BILLZ'GA YUKLASH (Sizning kodingiz)
     image_payload_list = []
     bot.send_message(chat_id, "📸 Rasm Billz serveriga yuklanmoqda...")
     try:
         file_info = bot.get_file(d['photo_id'])
         downloaded_file = bot.download_file(file_info.file_path)
         
-        # Siz topgan platform-id kiritildi (himoya uchun)
         headers = {
             'Authorization': f'Bearer {CURRENT_ACCESS_TOKEN}',
             'platform-id': '7d4a4c38-dd84-4902-b744-0488b80a4c01'
@@ -259,16 +264,20 @@ def save_to_billz(message):
     except Exception as e:
         bot.send_message(chat_id, f"⚠️ Botda rasm ishlash xatosi: {e}")
 
-    # 📦 2-QADAM: ASOSIY TO'VARNI YUBORISH
+    # Toifa ID sini bazadan topish
+    cat_id = CATEGORIES_DB.get(d['category'], "")
+    cat_list = [cat_id] if cat_id else []
+
+    # 📦 2-QADAM: ASOSIY TO'VARNI YUBORISH (Mukammal format)
     payload = {
         "barcode": str(d['article']),
         "brand_id": "",
         "brand_name": str(d['brand']),
-        "category_ids": [],
+        "category_ids": cat_list,
         "company_id": COMPANY_ID,
-        "description": f"Katalog: {d['category']}, Izoh: {d['comment']}",
+        "description": f"Katalog: {d['category']} | Brend: {d['brand']} | Izoh: {d['comment']}",
         "has_expiration_date": False,
-        "images": image_payload_list, # 🔥 Rasm ssilkasi shu yerda ketadi
+        "images": image_payload_list,
         "free_price": False,
         "is_auto_delivery": True,
         "is_auto_tax": True,
@@ -284,7 +293,16 @@ def save_to_billz(message):
                 "has_trigger": False,
                 "measurement_value": stock_val,
                 "shop_id": SHOP_ID,
-                "small_left_measurement_value": 0,
+                "small_left_measurement_value": signal_val,
+                "total_measurement_value": stock_val
+            }
+        ],
+        "shop_measurement_values": [
+            {
+                "has_trigger": False,
+                "measurement_value": stock_val,
+                "shop_id": SHOP_ID,
+                "small_left_measurement_value": signal_val,
                 "total_measurement_value": stock_val
             }
         ],
@@ -295,7 +313,9 @@ def save_to_billz(message):
                 "supply_price": cost_val,
                 "wholesale_price": wholesale_val,
                 "min_price": 0,
-                "max_price": 0
+                "max_price": 0,
+                "retail_currency": "KGS",
+                "supply_currency": "KGS"
             }
         ],
         "sku": str(d['article']),
@@ -315,7 +335,7 @@ def save_to_billz(message):
             bot.send_photo(
                 chat_id, 
                 d['photo_id'], 
-                caption=f"✅ **Barcha so'rovlar muvaffaqiyatli ketdi!**\n\nNom: {full_name}\nArtikul: {d['article']}",
+                caption=f"✅ **Barcha so'rovlar muvaffaqiyatli ketdi!**\n\nNom: {full_name}\nArtikul: {d['article']}\nNarx: {retail_val} KGS",
                 parse_mode="Markdown"
             )
         else:
@@ -327,13 +347,13 @@ def save_to_billz(message):
     main_menu(message)
 
 # ==========================================
-# 5. TAHRIRLASH VA VARIANT (O'ZGARISHSZ)
+# 5. TAHRIRLASH VA VARIANT 
 # ==========================================
 def start_edit(message):
     bot.register_next_step_handler(bot.send_message(message.chat.id, "🔍 Tahrirlash uchun ARTIKULNI kiriting:"), find_edit)
 
 def find_edit(message):
-    chat_id = message.message.chat.id # Bug fix
+    chat_id = message.chat.id # 👈 Xato shu yerda edi, tuzatildi!
     art = message.text
     if art not in db:
         return bot.send_message(chat_id, "❌ Bunday artikul bot xotirasida yo'q. Avval yarating.")
