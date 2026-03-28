@@ -10,9 +10,9 @@ TOKEN = os.environ.get('BOT_TOKEN', 'SIZNING_BOT_TOKENINGIZ')
 BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
 
-# 🔥 YANILANGAN MANZILLAR (channel=HTTP qo'shildi)
+# 🔥 YANILANGAN MANZILLAR (Siz topgan to'g'ri ssilka)
 BILLZ_API_BASE = 'https://api-admin.billz.ai/v2'
-BILLZ_API_POST_URL = f'{BILLZ_API_BASE}/product?channel=HTTP'
+BILLZ_API_POST_URL = f'{BILLZ_API_BASE}/product?Billz-Response-Channel=HTTP'
 
 # 🔥 SIZNING BAZA ID RAQAMLARINGIZ
 COMPANY_ID = "630c1af2-74be-478f-8e06-dff80bfe9edb"
