@@ -8,15 +8,13 @@ import requests
 # ==========================================
 TOKEN = os.environ.get('BOT_TOKEN', 'SIZNING_BOT_TOKENINGIZ')
 BILLZ_API_URL = os.environ.get('BILLZ_API_URL', 'https://api-admin.billz.ai/v2/product')
-BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ') # Bu endi Secret Key
+BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
 
 bot = telebot.TeleBot(TOKEN)
 
-# Vaqtinchalik xotira
 drafts = {}
 db = {}
-# Billz tizimi beradigan 15 kunlik ruxsatnoma shu yerda saqlanadi
 CURRENT_ACCESS_TOKEN = None 
 
 CATEGORIES = ["elektr", "santexnika", "injeneriya", "suxoy smest", "melich", "xoztovar", "instrument", "addelka", "kraska imulsiya", "kraska", "utipleniya", "pena silikon", "plintus", "kafel"]
@@ -29,20 +27,17 @@ def is_allowed(message):
     return True
 
 # ==========================================
-# 🔐 BILLZ 2.0 AVTORIZATSIYA TIZIMI (YANGI)
+# 🔐 BILLZ 2.0 AVTORIZATSIYA TIZIMI
 # ==========================================
 def get_valid_headers():
     global CURRENT_ACCESS_TOKEN
-    
-    # Agar ruxsatnoma yo'q bo'lsa, tizimdan yangisini olamiz
     if not CURRENT_ACCESS_TOKEN:
         auth_url = "https://api-admin.billz.ai/v1/auth/login"
         resp = requests.post(auth_url, json={"secret_token": BILLZ_API_TOKEN})
-        
         if resp.status_code == 200:
             CURRENT_ACCESS_TOKEN = resp.json()['data']['access_token']
         else:
-            raise Exception(f"Billz bilan bog'lanib bo'lmadi (Avtorizatsiya xatosi): {resp.text}")
+            raise Exception(f"Avtorizatsiya xatosi: {resp.text}")
             
     return {
         'Authorization': f'Bearer {CURRENT_ACCESS_TOKEN}',
@@ -58,7 +53,6 @@ def execute_billz_request(method, url, payload=None):
     else:
         response = requests.patch(url, json=payload, headers=headers)
         
-    # Agar 15 kun o'tib token o'lgan bo'lsa (401 xato), uni o'chirib, yangidan urinib ko'ramiz
     if response.status_code == 401:
         CURRENT_ACCESS_TOKEN = None
         headers = get_valid_headers()
@@ -70,7 +64,7 @@ def execute_billz_request(method, url, payload=None):
     return response
 
 # ==========================================
-# 2. ASOSIY MENU VA MAHSULOT YARATISH
+# 2. ASOSIY MENU
 # ==========================================
 @bot.message_handler(commands=['start', 'menu'])
 def main_menu(message):
@@ -90,6 +84,9 @@ def router(message):
     elif message.text == "🔀 Variant kiritish":
         start_variation(message)
 
+# ==========================================
+# 3. YANGI MAHSULOT QO'SHISH ZANJIRI
+# ==========================================
 def start_new_product(message):
     chat_id = message.chat.id
     drafts[chat_id] = {'type': 'new'}
@@ -209,10 +206,10 @@ def step_comment(message):
     save_to_billz(chat_id)
 
 # ==========================================
-# 🚀 3. BILLZGA YUBORISH (YANGI OBYEKT)
+# 🚀 4. BILLZGA YUBORISH (RENTGEN)
 # ==========================================
 def save_to_billz(chat_id):
-    bot.send_message(chat_id, "⏳ Billz tizimiga avtorizatsiya qilinmoqda va ma'lumot yuborilmoqda...")
+    bot.send_message(chat_id, "⏳ Billz tizimiga yuborilmoqda...")
     d = drafts[chat_id]
     full_name = f"{d['base_name']} {d.get('var_name', '')}".strip()
     
@@ -232,31 +229,43 @@ def save_to_billz(chat_id):
     }
 
     try:
-        # Yangi maxsus funksiyamizni ishlatamiz (xato bo'lsa o'zi tokenni yangilaydi)
         response = execute_billz_request('POST', BILLZ_API_URL, payload)
         
+        # 🔍 JOSUSLIK QISMI: Billzning asl javobini Telegramga chiqaramiz
+        bot.send_message(chat_id, f"🔍 **BILLZ JAVOBI (Rentgen):**\n`{response.text}`", parse_mode="Markdown")
+        
         if response.status_code in [200, 201]:
-            billz_data = response.json()
-            d['product_id'] = billz_data.get('id', d['article']) 
-            db[d['article']] = d 
-            
-            bot.send_photo(
-                chat_id, 
-                d['photo_id'], 
-                caption=f"✅ **BILLZGA MUVAFFAQIYATLI QO'SHILDI!**\n\nNom: {full_name}\nArtikul: {payload['sku']}\nQoldiq: {payload['stock']} {payload['unit']}",
-                parse_mode="Markdown"
-            )
+            try:
+                billz_data = response.json()
+                if billz_data.get('error') is None:
+                    # ID ni saqlab qolamiz
+                    if isinstance(billz_data.get('data'), dict):
+                        d['product_id'] = billz_data['data'].get('id', d['article'])
+                    else:
+                        d['product_id'] = d['article']
+                    
+                    db[d['article']] = d 
+                    bot.send_photo(
+                        chat_id, 
+                        d['photo_id'], 
+                        caption=f"✅ **Haqiqatan ham yaratildi!**\nNom: {full_name}\nArtikul: {payload['sku']}",
+                        parse_mode="Markdown"
+                    )
+                else:
+                    bot.send_message(chat_id, "⚠️ Status zo'r, lekin Billzning o'zida qandaydir xato bor (Rentgenga qarang)!")
+            except:
+                bot.send_message(chat_id, "⚠️ Javob qaytdi, lekin JSON formatida emas.")
         else:
-            bot.send_message(chat_id, f"❌ **Billz qabul qilmadi!**\nKodi: {response.status_code}\nSabab: {response.text}")
+            bot.send_message(chat_id, f"❌ Billz qabul qilmadi!\nKodi: {response.status_code}")
+            
     except Exception as e:
-        bot.send_message(chat_id, f"❌ **API xatolik:** {str(e)}")
+        bot.send_message(chat_id, f"❌ API xatolik: {str(e)}")
 
     main_menu(bot.message_handler)
 
 # ==========================================
-# 4. TAHRIRLASH VA VARIANT (Oldingi holicha)
+# 5. TAHRIRLASH VA VARIANT (O'ZGARISHSZ)
 # ==========================================
-# TAHRIRLASH
 def start_edit(message):
     bot.register_next_step_handler(bot.send_message(message.chat.id, "🔍 Tahrirlash uchun ARTIKULNI kiriting:"), find_edit)
 
@@ -318,7 +327,6 @@ def handle_edit_again(call):
     else:
         main_menu(call.message)
 
-# VARIANT KIRITISH
 def start_variation(message):
     bot.register_next_step_handler(bot.send_message(message.chat.id, "🔀 Asosiy (Ona) mahsulot ARTIKULINI kiriting:"), find_var)
 
