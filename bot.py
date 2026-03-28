@@ -11,7 +11,7 @@ BILLZ_API_URL = os.environ.get('BILLZ_API_URL', 'https://api-admin.billz.ai/v2/p
 BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
 
-# 🔥 SIZNING DO'KONINGIZ VA BAZANGIZ UCHUN MAXSUS ID RAQAMLAR (Rentgendan olindi)
+# 🔥 DO'KON VA BAZA UCHUN MAXSUS ID RAQAMLAR (Rentgendan olindi)
 COMPANY_ID = "630c1af2-74be-478f-8e06-dff80bfe9edb"
 SHOP_ID = "65f67287-f129-4994-b850-03299567b4ac"
 PRODUCT_TYPE_ID = "69e939aa-9b8f-46a9-b605-8b2675475b7b"
@@ -208,7 +208,7 @@ def step_comment(message):
     save_to_billz(chat_id)
 
 # ==========================================
-# 🚀 4. BILLZ 2.0 GA ANIQLIK BILAN YUBORISH
+# 🚀 4. BILLZ 2.0 GA YUBORISH (BARKOD BILAN 100% ANIQLIK)
 # ==========================================
 def save_to_billz(chat_id):
     bot.send_message(chat_id, "⏳ Billz tizimiga yuborilmoqda...")
@@ -216,30 +216,50 @@ def save_to_billz(chat_id):
     full_name = f"{d['base_name']} {d.get('var_name', '')}".strip()
     stock_val = float(d['stock'])
     
-    # 🔥 SIZ TOPGAN HAQIQIY BILLZ FORMATI!
+    # 🔥 ARTIKULNI BARKOD SIFATIDA MAJBURAN BERAMIZ
     payload = {
         "company_id": COMPANY_ID,
         "product_type_id": PRODUCT_TYPE_ID,
         "measurement_unit_id": MEASUREMENT_UNIT_ID,
         "name": full_name,
-        "sku": d['article'],
-        "barcode": d['article'],
-        "supply_price": d['cost'],
-        "retail_price": d['retail'],
+        "sku": str(d['article']),     # Artikul (matn ko'rinishida)
+        "barcode": str(d['article']), # 👈 SIZ AYTGAN ASOSIY YECHIM: Barkodga artikulni biriktirdik
+        "supply_price": float(d['cost']),
+        "retail_price": float(d['retail']),
         "description": f"Katalog: {d['category']}, Firma: {d['brand']}, Izoh: {d['comment']}",
+        "is_divisible": False,
+        "is_variative": False,
+        "is_auto_tax": True,
+        "is_auto_delivery": True,
+        "brand_id": "",
+        "category_ids": [],
+        "variants": [],
+        "shipments": [
+            {
+                "shop_id": SHOP_ID,
+                "measurement_value": stock_val,
+                "total_measurement_value": stock_val,
+                "small_left_measurement_value": 0,
+                "has_trigger": False
+            }
+        ],
         "shop_measurement_values": [
             {
                 "shop_id": SHOP_ID,
                 "measurement_value": stock_val,
-                "total_measurement_value": stock_val
+                "total_measurement_value": stock_val,
+                "small_left_measurement_value": 0,
+                "has_trigger": False
             }
         ],
         "shop_prices": [
             {
                 "shop_id": SHOP_ID,
-                "supply_price": d['cost'],
-                "retail_price": d['retail'],
-                "wholesale_price": d['wholesale']
+                "supply_price": float(d['cost']),
+                "retail_price": float(d['retail']),
+                "wholesale_price": float(d['wholesale']),
+                "max_price": 0,
+                "min_price": 0
             }
         ]
     }
@@ -247,19 +267,18 @@ def save_to_billz(chat_id):
     try:
         response = execute_billz_request('POST', BILLZ_API_URL, payload)
         
-        # Rentgen ishlayveradi (Natijani nazorat qilish uchun)
-        bot.send_message(chat_id, f"🔍 **Rentgen (API javobi):**\n`{response.text[:100]}...`", parse_mode="Markdown")
+        bot.send_message(chat_id, f"🔍 **Rentgen:**\n`{response.text[:100]}...`", parse_mode="Markdown")
         
         if response.status_code in [200, 201]:
             db[d['article']] = d 
             bot.send_photo(
                 chat_id, 
                 d['photo_id'], 
-                caption=f"✅ **MAHSULOT DO'KONGA QO'SHILDI!**\n\nNom: {full_name}\nArtikul: {d['article']}\nQoldiq: {stock_val} ta",
+                caption=f"✅ **So'rov ketdi!**\n\nNom: {full_name}\nArtikul: {d['article']}\nBarkod: {d['article']}\n\n⚠️ Endi do'kondan qarab ko'ringchi, chiqdimi?",
                 parse_mode="Markdown"
             )
         else:
-            bot.send_message(chat_id, f"❌ Billz qabul qilmadi!\nKodi: {response.status_code}")
+            bot.send_message(chat_id, f"❌ Billz qabul qilmadi!\nKodi: {response.status_code}\nSabab: {response.text}")
             
     except Exception as e:
         bot.send_message(chat_id, f"❌ API xatolik: {str(e)}")
