@@ -7,9 +7,12 @@ import requests
 # 1. SOZLAMALAR VA XAVFSIZLIK
 # ==========================================
 TOKEN = os.environ.get('BOT_TOKEN', 'SIZNING_BOT_TOKENINGIZ')
-BILLZ_API_URL = os.environ.get('BILLZ_API_URL', 'https://api-admin.billz.ai/v2/product')
 BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
+
+# 🔥 YANILANGAN MANZILLAR (channel=HTTP qo'shildi)
+BILLZ_API_BASE = 'https://api-admin.billz.ai/v2'
+BILLZ_API_POST_URL = f'{BILLZ_API_BASE}/product?channel=HTTP'
 
 # 🔥 SIZNING BAZA ID RAQAMLARINGIZ
 COMPANY_ID = "630c1af2-74be-478f-8e06-dff80bfe9edb"
@@ -221,9 +224,8 @@ def save_to_billz(message):
     wholesale_val = float(d['wholesale'])
     stock_val = float(d['stock'])
     
-    # 🔥 YANGA PAYLOAD: Support yuborgan JSON namunasiga 100% moslashtirildi
     payload = {
-        "barcode": str(d['article']), # Barkod va Artikul bir xil
+        "barcode": str(d['article']),
         "brand_id": "",
         "brand_name": str(d['brand']),
         "category_ids": [],
@@ -260,7 +262,7 @@ def save_to_billz(message):
                 "max_price": 0
             }
         ],
-        "sku": str(d['article']), # Barkod va Artikul bir xil
+        "sku": str(d['article']),
         "supplier_ids": [],
         "supply_price": cost_val,
         "tax_tariff_id": "",
@@ -270,7 +272,8 @@ def save_to_billz(message):
     }
 
     try:
-        response = execute_billz_request('POST', BILLZ_API_URL, payload)
+        # 🔥 YANILANGAN MANZILGA YUBORILMOQDA
+        response = execute_billz_request('POST', BILLZ_API_POST_URL, payload)
         
         bot.send_message(chat_id, f"🔍 **Rentgen:**\n`{response.text[:100]}...`", parse_mode="Markdown")
         
@@ -332,7 +335,8 @@ def save_edit(message):
         db[art][field] = new_val
 
     bot.send_message(chat_id, "⏳ O'zgarish Billzga yuborilmoqda...")
-    patch_url = f"{BILLZ_API_URL.replace('/product', '')}/product/{p_id}/patch-props"
+    # 🔥 YANILANGAN PATCH MANZILI
+    patch_url = f"{BILLZ_API_BASE}/product/{p_id}/patch-props"
     
     try:
         response = execute_billz_request('PATCH', patch_url, {field: new_val})
