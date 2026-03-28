@@ -2,6 +2,7 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 import os
 import requests
+import base64
 
 # ==========================================
 # 1. SOZLAMALAR VA XAVFSIZLIK
@@ -10,7 +11,7 @@ TOKEN = os.environ.get('BOT_TOKEN', 'SIZNING_BOT_TOKENINGIZ')
 BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
 
-# 🔥 YANILANGAN MANZILLAR (Siz topgan to'g'ri ssilka)
+# 🔥 YANILANGAN MANZILLAR 
 BILLZ_API_BASE = 'https://api-admin.billz.ai/v2'
 BILLZ_API_POST_URL = f'{BILLZ_API_BASE}/product?Billz-Response-Channel=HTTP'
 
@@ -224,6 +225,18 @@ def save_to_billz(message):
     wholesale_val = float(d['wholesale'])
     stock_val = float(d['stock'])
     
+    # 📸 RASMNI TELEGRAMDAN OLIB BASE64 FORMATGA O'TKAZISH
+    image_payload_list = []
+    try:
+        file_info = bot.get_file(d['photo_id'])
+        downloaded_file = bot.download_file(file_info.file_path)
+        base64_str = base64.b64encode(downloaded_file).decode('utf-8')
+        
+        # Hozircha eng oddiy taxmin bilan yuborib ko'ramiz
+        image_payload_list = [f"data:image/jpeg;base64,{base64_str}"]
+    except Exception as e:
+        bot.send_message(chat_id, f"⚠️ Rasm ishlashda botda xato: {e}")
+
     payload = {
         "barcode": str(d['article']),
         "brand_id": "",
@@ -232,7 +245,7 @@ def save_to_billz(message):
         "company_id": COMPANY_ID,
         "description": f"Katalog: {d['category']}, Izoh: {d['comment']}",
         "has_expiration_date": False,
-        "images": [],
+        "images": image_payload_list, # 🔥 Rasm shu yerda ketadi
         "free_price": False,
         "is_auto_delivery": True,
         "is_auto_tax": True,
@@ -272,10 +285,10 @@ def save_to_billz(message):
     }
 
     try:
-        # 🔥 YANILANGAN MANZILGA YUBORILMOQDA
         response = execute_billz_request('POST', BILLZ_API_POST_URL, payload)
         
-        bot.send_message(chat_id, f"🔍 **Rentgen:**\n`{response.text[:100]}...`", parse_mode="Markdown")
+        # 🔥 Xatoni aniq o'qish uchun 500 ta harfgacha kattalashtirdik
+        bot.send_message(chat_id, f"🔍 **Rentgen:**\n`{response.text[:500]}...`", parse_mode="Markdown")
         
         if response.status_code in [200, 201]:
             db[d['article']] = d 
@@ -335,7 +348,6 @@ def save_edit(message):
         db[art][field] = new_val
 
     bot.send_message(chat_id, "⏳ O'zgarish Billzga yuborilmoqda...")
-    # 🔥 YANILANGAN PATCH MANZILI
     patch_url = f"{BILLZ_API_BASE}/product/{p_id}/patch-props"
     
     try:
