@@ -11,8 +11,13 @@ BILLZ_API_URL = os.environ.get('BILLZ_API_URL', 'https://api-admin.billz.ai/v2/p
 BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
 
-bot = telebot.TeleBot(TOKEN)
+# 🔥 SIZNING DO'KONINGIZ VA BAZANGIZ UCHUN MAXSUS ID RAQAMLAR (Rentgendan olindi)
+COMPANY_ID = "630c1af2-74be-478f-8e06-dff80bfe9edb"
+SHOP_ID = "65f67287-f129-4994-b850-03299567b4ac"
+PRODUCT_TYPE_ID = "69e939aa-9b8f-46a9-b605-8b2675475b7b"
+MEASUREMENT_UNIT_ID = "4250db2b-fa5a-4702-8f6d-a22d8e671d7c"
 
+bot = telebot.TeleBot(TOKEN)
 drafts = {}
 db = {}
 CURRENT_ACCESS_TOKEN = None 
@@ -38,7 +43,6 @@ def get_valid_headers():
             CURRENT_ACCESS_TOKEN = resp.json()['data']['access_token']
         else:
             raise Exception(f"Avtorizatsiya xatosi: {resp.text}")
-            
     return {
         'Authorization': f'Bearer {CURRENT_ACCESS_TOKEN}',
         'Content-Type': 'application/json'
@@ -47,7 +51,6 @@ def get_valid_headers():
 def execute_billz_request(method, url, payload=None):
     global CURRENT_ACCESS_TOKEN
     headers = get_valid_headers()
-    
     if method == 'POST':
         response = requests.post(url, json=payload, headers=headers)
     else:
@@ -60,7 +63,6 @@ def execute_billz_request(method, url, payload=None):
             response = requests.post(url, json=payload, headers=headers)
         else:
             response = requests.patch(url, json=payload, headers=headers)
-            
     return response
 
 # ==========================================
@@ -206,58 +208,56 @@ def step_comment(message):
     save_to_billz(chat_id)
 
 # ==========================================
-# 🚀 4. BILLZGA YUBORISH (RENTGEN 2.0)
+# 🚀 4. BILLZ 2.0 GA ANIQLIK BILAN YUBORISH
 # ==========================================
 def save_to_billz(chat_id):
     bot.send_message(chat_id, "⏳ Billz tizimiga yuborilmoqda...")
     d = drafts[chat_id]
     full_name = f"{d['base_name']} {d.get('var_name', '')}".strip()
+    stock_val = float(d['stock'])
     
-    # 🔥 O'ZGARISHLAR MANA SHU PAYLOAD ICHIDA!
+    # 🔥 SIZ TOPGAN HAQIQIY BILLZ FORMATI!
     payload = {
-        "product": {
-            "name": full_name,
-            "sku": d['article'],
-            "barcode": d['article'],
-            "cost": d['cost'],
-            "price": d['retail'],
-            "wholesale_price": d['wholesale'],
-            "stock": float(d['stock']),
-            "category_name": d['category'], 
-            "brand_name": d['brand'],
-            "measurement_name": d['unit'], 
-            "min_stock_level": float(d['signal']),
-            "description": d['comment'],
-            "status": "active" # Yashirin qolib ketmasligi uchun majburiy aktiv
-        }
+        "company_id": COMPANY_ID,
+        "product_type_id": PRODUCT_TYPE_ID,
+        "measurement_unit_id": MEASUREMENT_UNIT_ID,
+        "name": full_name,
+        "sku": d['article'],
+        "barcode": d['article'],
+        "supply_price": d['cost'],
+        "retail_price": d['retail'],
+        "description": f"Katalog: {d['category']}, Firma: {d['brand']}, Izoh: {d['comment']}",
+        "shop_measurement_values": [
+            {
+                "shop_id": SHOP_ID,
+                "measurement_value": stock_val,
+                "total_measurement_value": stock_val
+            }
+        ],
+        "shop_prices": [
+            {
+                "shop_id": SHOP_ID,
+                "supply_price": d['cost'],
+                "retail_price": d['retail'],
+                "wholesale_price": d['wholesale']
+            }
+        ]
     }
 
     try:
         response = execute_billz_request('POST', BILLZ_API_URL, payload)
         
-        bot.send_message(chat_id, f"🔍 **BILLZ JAVOBI (Rentgen 2.0):**\n`{response.text}`", parse_mode="Markdown")
+        # Rentgen ishlayveradi (Natijani nazorat qilish uchun)
+        bot.send_message(chat_id, f"🔍 **Rentgen (API javobi):**\n`{response.text[:100]}...`", parse_mode="Markdown")
         
         if response.status_code in [200, 201]:
-            try:
-                billz_data = response.json()
-                if billz_data.get('error') is None:
-                    
-                    if isinstance(billz_data.get('data'), dict):
-                        d['product_id'] = billz_data['data'].get('id', d['article'])
-                    else:
-                        d['product_id'] = d['article']
-                    
-                    db[d['article']] = d 
-                    bot.send_photo(
-                        chat_id, 
-                        d['photo_id'], 
-                        caption=f"✅ **Haqiqatan ham yaratildi!**\nNom: {full_name}\nArtikul: {payload['product']['sku']}",
-                        parse_mode="Markdown"
-                    )
-                else:
-                    bot.send_message(chat_id, "⚠️ Status zo'r, lekin Billzning o'zida qandaydir xato bor (Rentgenga qarang)!")
-            except:
-                bot.send_message(chat_id, "⚠️ Javob qaytdi, lekin JSON formatida emas.")
+            db[d['article']] = d 
+            bot.send_photo(
+                chat_id, 
+                d['photo_id'], 
+                caption=f"✅ **MAHSULOT DO'KONGA QO'SHILDI!**\n\nNom: {full_name}\nArtikul: {d['article']}\nQoldiq: {stock_val} ta",
+                parse_mode="Markdown"
+            )
         else:
             bot.send_message(chat_id, f"❌ Billz qabul qilmadi!\nKodi: {response.status_code}")
             
@@ -284,7 +284,7 @@ def show_edit_menu(chat_id):
     art = drafts[chat_id]['article']
     p = db[art]
     markup = InlineKeyboardMarkup(row_width=2)
-    buttons = [("Nomi", "name"), ("Kelish narx", "cost"), ("Chakana narx", "price"), ("Optom narx", "wholesale_price"), ("Katalog", "category"), ("Firma", "brand"), ("Qoldiq (+ qo'shish)", "stock")]
+    buttons = [("Nomi", "name"), ("Kelish narx", "cost"), ("Chakana narx", "price"), ("Optom narx", "wholesale_price"), ("Qoldiq (+ qo'shish)", "stock")]
     markup.add(*[InlineKeyboardButton(text, callback_data=f"edit_{code}") for text, code in buttons])
     bot.send_message(chat_id, f"📝 Tahrirlash: **{p['base_name']} {p.get('var_name', '')}**\nNimani o'zgartirasiz?", reply_markup=markup, parse_mode="Markdown")
 
@@ -313,22 +313,12 @@ def save_edit(message):
     try:
         response = execute_billz_request('PATCH', patch_url, {field: new_val})
         if response.status_code in [200, 201]:
-            markup = InlineKeyboardMarkup()
-            markup.add(InlineKeyboardButton("Ha", callback_data="edit_again_yes"), InlineKeyboardButton("Yo'q", callback_data="edit_again_no"))
-            bot.send_message(chat_id, "✅ Muvaffaqiyatli tahrirlandi! Yana o'zgartirasizmi?", reply_markup=markup)
+            bot.send_message(chat_id, "✅ Muvaffaqiyatli tahrirlandi!")
         else:
             bot.send_message(chat_id, f"❌ Billz qabul qilmadi: {response.text}")
     except Exception as e:
          bot.send_message(chat_id, f"❌ API xatoligi: {str(e)}")
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_again_'))
-def handle_edit_again(call):
-    chat_id = call.message.chat.id
-    bot.delete_message(chat_id, call.message.message_id)
-    if call.data == 'edit_again_yes':
-        show_edit_menu(chat_id)
-    else:
-        main_menu(call.message)
+    main_menu(message)
 
 def start_variation(message):
     bot.register_next_step_handler(bot.send_message(message.chat.id, "🔀 Asosiy (Ona) mahsulot ARTIKULINI kiriting:"), find_var)
