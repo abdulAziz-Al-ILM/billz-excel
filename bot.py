@@ -4,16 +4,19 @@ import os
 import requests
 
 # ==========================================
-# 1. SOZLAMALAR VA XAVFSIZLIK
+# 1. SOZLAMALAR VA XAVFSIZLIK (BILLZ 2.0)
 # ==========================================
 TOKEN = os.environ.get('BOT_TOKEN', 'SIZNING_BOT_TOKENINGIZ')
-BILLZ_API_URL = os.environ.get('BILLZ_API_URL', 'https://api.billz.ai/v1/products')
+# Billz 2.0 uchun asosiy mahsulot yaratish manzili (POST):
+BILLZ_API_URL = os.environ.get('BILLZ_API_URL', 'https://api-admin.billz.ai/v2/product')
 BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
+
+# Ruxsat etilgan foydalanuvchilar (vergul bilan ajratiladi)
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
 
 bot = telebot.TeleBot(TOKEN)
 
-# Vaqtinchalik xotira va mahalliy baza (Edit va Variant uchun)
+# Vaqtinchalik xotira va mahalliy baza (Edit va Variant uchun API bilan sinxron ishlaydi)
 drafts = {}
 db = {}
 
@@ -22,9 +25,15 @@ UNITS = ["dona", "metr", "litr", "kg", "quti", "komplekt", "rulon"]
 
 def is_allowed(message):
     if str(message.chat.id) not in ALLOWED_USERS:
-        bot.send_message(message.chat.id, "⛔️ Sizga ruxsat yo'q.")
+        bot.send_message(message.chat.id, "⛔️ Ruxsat etilmagan foydalanuvchi.")
         return False
     return True
+
+def get_headers():
+    return {
+        'Authorization': f'Bearer {BILLZ_API_TOKEN}',
+        'Content-Type': 'application/json'
+    }
 
 # ==========================================
 # 2. ASOSIY MENU
@@ -81,7 +90,8 @@ def step_cost(message):
     try:
         drafts[chat_id]['cost'] = float(message.text.replace(',', '.'))
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("⚡️ Standart (+13% chakana, +10% optom)", callback_data="price_std"))
+        # FOIZLAR YANGILANDI: Chakana 10%, Optom 7%
+        markup.add(InlineKeyboardButton("⚡️ Standart (+10% chakana, +7% optom)", callback_data="price_std"))
         markup.add(InlineKeyboardButton("⚙️ Manual (O'zim kiritaman)", callback_data="price_man"))
         bot.send_message(chat_id, "6️⃣ Sotish narxini qanday hisoblaymiz?", reply_markup=markup)
     except ValueError:
@@ -92,9 +102,9 @@ def handle_pricing(call):
     chat_id = call.message.chat.id
     cost = drafts[chat_id]['cost']
     if call.data == 'price_std':
-        drafts[chat_id]['retail'] = round(cost * 1.13, 2)
-        drafts[chat_id]['wholesale'] = round(cost * 1.10, 2)
-        bot.edit_message_text(f"✅ Standart narxlar: Chakana {drafts[chat_id]['retail']}, Optom {drafts[chat_id]['wholesale']}", chat_id, call.message.message_id)
+        drafts[chat_id]['retail'] = round(cost * 1.10, 2)    # 10% ustama
+        drafts[chat_id]['wholesale'] = round(cost * 1.07, 2) # 7% ustama
+        bot.edit_message_text(f"✅ Standart narxlar saqlandi:\nChakana: {drafts[chat_id]['retail']}\nOptom: {drafts[chat_id]['wholesale']}", chat_id, call.message.message_id)
         bot.register_next_step_handler(bot.send_message(chat_id, "7️⃣ Qanchadan boshlab optom hisoblanadi? (Raqam):"), step_optom_limit)
     else:
         markup = InlineKeyboardMarkup()
@@ -169,7 +179,57 @@ def step_comment(message):
     save_to_billz(chat_id)
 
 # ==========================================
-# 4. TAHRIRLASH (EDIT) MENU
+# 4. BILLZ 2.0 API INTEGRATSIYASI (YARATISH)
+# ==========================================
+def save_to_billz(chat_id):
+    bot.send_message(chat_id, "⏳ Billz tizimiga yuborilmoqda...")
+    d = drafts[chat_id]
+    full_name = f"{d['base_name']} {d.get('var_name', '')}".strip()
+    
+    # Billz 2.0 uchun umumiy obyekt strukturasi
+    payload = {
+        "name": full_name,
+        "sku": d['article'],
+        "barcode": d['article'],
+        "cost": d['cost'],
+        "price": d['retail'],
+        "wholesale_price": d['wholesale'],
+        "stock": float(d['stock']),
+        "category": d['category'],
+        "brand": d['brand'],
+        "unit": d['unit'],
+        "min_stock_level": float(d['signal']),
+        "description": d['comment']
+    }
+
+    try:
+        # POST so'rovi orqali yangi mahsulot yaratamiz
+        response = requests.post(BILLZ_API_URL, json=payload, headers=get_headers())
+        
+        if response.status_code in [200, 201]:
+            # Javob ichidan Billz bergan maxsus ID ni olib qolamiz (Tahrirlash uchun kerak)
+            billz_data = response.json()
+            # Agar ID qaytmasa, artikulning o'zini ID sifatida saqlaymiz
+            product_id = billz_data.get('id', d['article']) 
+            d['product_id'] = product_id 
+            
+            db[d['article']] = d 
+            
+            bot.send_photo(
+                chat_id, 
+                d['photo_id'], 
+                caption=f"✅ **BILLZGA MUVAFFAQIYATLI QO'SHILDI!**\n\nNom: {full_name}\nArtikul: {payload['sku']}\nQoldiq: {payload['stock']} {payload['unit']}",
+                parse_mode="Markdown"
+            )
+        else:
+            bot.send_message(chat_id, f"❌ **Billz qabul qilmadi!**\nKodi: {response.status_code}\nSabab: {response.text}")
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ **API xatolik:** {str(e)}")
+
+    main_menu(bot.message_handler)
+
+# ==========================================
+# 5. TAHRIRLASH (EDIT) MENU VA API PATCH SO'ROVI
 # ==========================================
 def start_edit(message):
     bot.register_next_step_handler(bot.send_message(message.chat.id, "🔍 Tahrirlash uchun ARTIKULNI kiriting:"), find_edit)
@@ -187,13 +247,12 @@ def show_edit_menu(chat_id):
     p = db[art]
     markup = InlineKeyboardMarkup(row_width=2)
     buttons = [
-        ("Nomi", "edit_base_name"), ("Kelish narx", "edit_cost"), ("Chakana narx", "edit_retail"), 
-        ("Optom narx", "edit_wholesale"), ("Optom limit", "edit_optom_limit"), ("Katalog", "edit_category"),
-        ("Firma", "edit_brand"), ("Signal", "edit_signal"), ("Rasm", "edit_photo"),
-        ("Artikul", "edit_article"), ("Qoldiq (+ qo'shish)", "edit_stock"), ("O'lchov", "edit_unit"), ("Izoh", "edit_comment")
+        ("Nomi", "name"), ("Kelish narx", "cost"), ("Chakana narx", "price"), 
+        ("Optom narx", "wholesale_price"), ("Katalog", "category"),
+        ("Firma", "brand"), ("Qoldiq (+ qo'shish)", "stock")
     ]
-    markup.add(*[InlineKeyboardButton(text, callback_data=code) for text, code in buttons])
-    bot.send_message(chat_id, f"📝 Tahrirlash: **{p['base_name']} {p.get('var_name', '')}**\nQaysi birini o'zgartirasiz?", reply_markup=markup, parse_mode="Markdown")
+    markup.add(*[InlineKeyboardButton(text, callback_data=f"edit_{code}") for text, code in buttons])
+    bot.send_message(chat_id, f"📝 Tahrirlash: **{p['base_name']} {p.get('var_name', '')}**\nNimani o'zgartirasiz?", reply_markup=markup, parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_') and not call.data.startswith('edit_again_'))
 def handle_edit_choice(call):
@@ -206,19 +265,32 @@ def save_edit(message):
     chat_id = message.chat.id
     field = drafts[chat_id]['edit_field']
     art = drafts[chat_id]['article']
+    p_id = db[art].get('product_id', art) # Billz tizimidagi ID
+    
+    new_val = float(message.text) if field in ['cost', 'price', 'wholesale_price', 'stock'] else message.text
     
     if field == 'stock':
-        db[art][field] = str(float(db[art][field]) + float(message.text))
-    elif field == 'photo':
-        db[art]['photo_id'] = message.photo[-1].file_id if message.photo else db[art]['photo_id']
+        new_val = float(db[art]['stock']) + new_val
+        db[art]['stock'] = new_val
     else:
-        db[art][field] = message.text
-        
-    # Bu yerda API orqali Billzga o'zgarishni yuborish funksiyasini chaqirish mumkin (PUT so'rovi orqali)
+        db[art][field] = new_val
+
+    bot.send_message(chat_id, "⏳ O'zgarish Billzga yuborilmoqda...")
     
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("Ha", callback_data="edit_again_yes"), InlineKeyboardButton("Yo'q", callback_data="edit_again_no"))
-    bot.send_message(chat_id, "✅ Tahrirlandi. Yana shu mahsulotni tahrirlaysizmi?", reply_markup=markup)
+    # SIZ TOPGAN O'SHA TAHRIRLASH MANZILI (PATCH)
+    patch_url = f"{BILLZ_API_URL.replace('/product', '')}/product/{p_id}/patch-props"
+    patch_payload = {field: new_val}
+
+    try:
+        response = requests.patch(patch_url, json=patch_payload, headers=get_headers())
+        if response.status_code in [200, 201]:
+            markup = InlineKeyboardMarkup()
+            markup.add(InlineKeyboardButton("Ha", callback_data="edit_again_yes"), InlineKeyboardButton("Yo'q", callback_data="edit_again_no"))
+            bot.send_message(chat_id, "✅ Muvaffaqiyatli tahrirlandi! Yana o'zgartirasizmi?", reply_markup=markup)
+        else:
+            bot.send_message(chat_id, f"❌ Billz tahrirni qabul qilmadi: {response.text}")
+    except Exception as e:
+         bot.send_message(chat_id, f"❌ API xatoligi: {str(e)}")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_again_'))
 def handle_edit_again(call):
@@ -230,7 +302,7 @@ def handle_edit_again(call):
         main_menu(call.message)
 
 # ==========================================
-# 5. VARIANT KIRITISH (ONA-BOLA)
+# 6. VARIANT KIRITISH (ONA-BOLA)
 # ==========================================
 def start_variation(message):
     bot.register_next_step_handler(bot.send_message(message.chat.id, "🔀 Asosiy (Ona) mahsulot ARTIKULINI kiriting:"), find_var)
@@ -263,56 +335,11 @@ def step_var_cost_stock(message):
         drafts[chat_id]['stock'] = stock
         
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("Standart (+13%, +10%)", callback_data="price_std"))
+        markup.add(InlineKeyboardButton("Standart (+10%, +7%)", callback_data="price_std"))
         markup.add(InlineKeyboardButton("Manual", callback_data="price_man"))
         bot.send_message(chat_id, "Sotish narxini qanday hisoblaymiz?", reply_markup=markup)
     except ValueError:
         bot.register_next_step_handler(bot.send_message(chat_id, "❌ Xato. Format: 'Narx Soni' (masalan: 15000 50)"), step_var_cost_stock)
-
-# ==========================================
-# 6. BILLZ API INTEGRATSIYASI
-# ==========================================
-def save_to_billz(chat_id):
-    d = drafts[chat_id]
-    full_name = f"{d['base_name']} {d.get('var_name', '')}".strip()
-    
-    payload = {
-        "name": full_name,
-        "sku": d['article'],
-        "barcode": d['article'],
-        "cost": d['cost'],
-        "price": d['retail'],
-        "wholesale_price": d['wholesale'],
-        "stock": d['stock'],
-        "category": d['category'],
-        "brand": d['brand'],
-        "unit": d['unit'],
-        "min_stock_level": d['signal'],
-        "description": d['comment']
-    }
-
-    headers = {
-        'Authorization': f'Bearer {BILLZ_API_TOKEN}',
-        'Content-Type': 'application/json'
-    }
-
-    try:
-        response = requests.post(BILLZ_API_URL, json=payload, headers=headers)
-        
-        if response.status_code in [200, 201]:
-            db[d['article']] = d # Keyingi safar variant qo'shish yoki tahrirlash uchun saqlaymiz
-            bot.send_photo(
-                chat_id, 
-                d['photo_id'], 
-                caption=f"✅ **MUVAFFAQIYATLI SAQLANDI VA BILLZGA YUBORILDI!**\n\nNom: {full_name}\nArtikul: {payload['sku']}\nKatalog: {payload['category'].capitalize()}\nQoldiq: {payload['stock']} {payload['unit']}",
-                parse_mode="Markdown"
-            )
-        else:
-            bot.send_message(chat_id, f"❌ **Billz qabul qilmadi!**\nKodi: {response.status_code}\nSabab: {response.text}")
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ **API ga ulanishda xatolik:** {str(e)}")
-
-    main_menu(bot.message_handler)
 
 if __name__ == '__main__':
     bot.polling(none_stop=True)
