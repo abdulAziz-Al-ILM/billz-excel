@@ -2,7 +2,6 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 import os
 import requests
-import base64
 
 # ==========================================
 # 1. SOZLAMALAR VA XAVFSIZLIK
@@ -11,9 +10,10 @@ TOKEN = os.environ.get('BOT_TOKEN', 'SIZNING_BOT_TOKENINGIZ')
 BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
 
-# 🔥 YANILANGAN MANZILLAR 
+# 🔥 YANILANGAN MANZILLAR
 BILLZ_API_BASE = 'https://api-admin.billz.ai/v2'
 BILLZ_API_POST_URL = f'{BILLZ_API_BASE}/product?Billz-Response-Channel=HTTP'
+BILLZ_UPLOAD_URL = 'https://api-admin.billz.ai/v1/upload' # 📸 Siz topgan rasm yuklash manzili
 
 # 🔥 SIZNING BAZA ID RAQAMLARINGIZ
 COMPANY_ID = "630c1af2-74be-478f-8e06-dff80bfe9edb"
@@ -216,7 +216,6 @@ def step_comment(message):
 # ==========================================
 def save_to_billz(message):
     chat_id = message.chat.id
-    bot.send_message(chat_id, "⏳ Billz tizimiga yuborilmoqda...")
     d = drafts[chat_id]
     
     full_name = f"{d['base_name']} {d.get('var_name', '')}".strip()
@@ -225,18 +224,39 @@ def save_to_billz(message):
     wholesale_val = float(d['wholesale'])
     stock_val = float(d['stock'])
     
-    # 📸 RASMNI TELEGRAMDAN OLIB BASE64 FORMATGA O'TKAZISH
+    # 📸 1-QADAM: RASMNI TELEGRAMDAN OLIB BILLZ'GA YUKLASH
     image_payload_list = []
+    bot.send_message(chat_id, "📸 Rasm Billz serveriga yuklanmoqda...")
     try:
         file_info = bot.get_file(d['photo_id'])
         downloaded_file = bot.download_file(file_info.file_path)
-        base64_str = base64.b64encode(downloaded_file).decode('utf-8')
         
-        # Hozircha eng oddiy taxmin bilan yuborib ko'ramiz
-        image_payload_list = [f"data:image/jpeg;base64,{base64_str}"]
+        # multipart/form-data yordamida fayl yuboramiz (Siz topgan usul)
+        headers = {'Authorization': f'Bearer {CURRENT_ACCESS_TOKEN}'}
+        files = {'file': ('product_image.png', downloaded_file, 'image/png')}
+        
+        up_res = requests.post(BILLZ_UPLOAD_URL, headers=headers, files=files)
+        
+        if up_res.status_code in [200, 201]:
+            up_data = up_res.json()
+            # Javobdan rasm ssilkasini qirqib olamiz
+            img_val = None
+            if 'data' in up_data:
+                if isinstance(up_data['data'], str):
+                    img_val = up_data['data']
+                elif isinstance(up_data['data'], dict):
+                    img_val = up_data['data'].get('url', up_data['data'].get('id', str(up_data['data'])))
+            else:
+                img_val = up_data.get('url', str(up_data))
+                
+            image_payload_list = [img_val] if img_val else []
+            bot.send_message(chat_id, "✅ Rasm omborga joylandi. Endi to'var yuborilmoqda...")
+        else:
+            bot.send_message(chat_id, f"⚠️ Rasm yuklashda xato (kod {up_res.status_code}): {up_res.text}")
     except Exception as e:
-        bot.send_message(chat_id, f"⚠️ Rasm ishlashda botda xato: {e}")
+        bot.send_message(chat_id, f"⚠️ Botda rasm ishlash xatosi: {e}")
 
+    # 📦 2-QADAM: ASOSIY TO'VARNI YUBORISH
     payload = {
         "barcode": str(d['article']),
         "brand_id": "",
@@ -245,7 +265,7 @@ def save_to_billz(message):
         "company_id": COMPANY_ID,
         "description": f"Katalog: {d['category']}, Izoh: {d['comment']}",
         "has_expiration_date": False,
-        "images": image_payload_list, # 🔥 Rasm shu yerda ketadi
+        "images": image_payload_list, # 🔥 Rasm ssilkasi shu yerda kiritildi
         "free_price": False,
         "is_auto_delivery": True,
         "is_auto_tax": True,
@@ -287,19 +307,16 @@ def save_to_billz(message):
     try:
         response = execute_billz_request('POST', BILLZ_API_POST_URL, payload)
         
-        # 🔥 Xatoni aniq o'qish uchun 500 ta harfgacha kattalashtirdik
-        bot.send_message(chat_id, f"🔍 **Rentgen:**\n`{response.text[:500]}...`", parse_mode="Markdown")
-        
         if response.status_code in [200, 201]:
             db[d['article']] = d 
             bot.send_photo(
                 chat_id, 
                 d['photo_id'], 
-                caption=f"✅ **So'rov ketdi!**\n\nNom: {full_name}\nArtikul: {d['article']}\nBarkod: {d['article']}",
+                caption=f"✅ **Barcha so'rovlar muvaffaqiyatli ketdi!**\n\nNom: {full_name}\nArtikul: {d['article']}",
                 parse_mode="Markdown"
             )
         else:
-            bot.send_message(chat_id, f"❌ Billz qabul qilmadi!\nKodi: {response.status_code}\nSabab: {response.text}")
+            bot.send_message(chat_id, f"❌ Billz to'varni qabul qilmadi!\nKodi: {response.status_code}\nSabab: {response.text}")
             
     except Exception as e:
         bot.send_message(chat_id, f"❌ API xatolik: {str(e)}")
