@@ -13,7 +13,8 @@ ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',
 # 🔥 YANILANGAN MANZILLAR
 BILLZ_API_BASE = 'https://api-admin.billz.ai/v2'
 BILLZ_API_POST_URL = f'{BILLZ_API_BASE}/product?Billz-Response-Channel=HTTP'
-BILLZ_UPLOAD_URL = 'https://api-admin.billz.ai/v1/upload' # 📸 Siz topgan rasm yuklash manzili
+# 📸 Siz topgan ANIQLANGAN rasm yuklash manzili
+BILLZ_UPLOAD_URL = 'https://sss.billz.ai/api/v1/upload' 
 
 # 🔥 SIZNING BAZA ID RAQAMLARINGIZ
 COMPANY_ID = "630c1af2-74be-478f-8e06-dff80bfe9edb"
@@ -231,15 +232,17 @@ def save_to_billz(message):
         file_info = bot.get_file(d['photo_id'])
         downloaded_file = bot.download_file(file_info.file_path)
         
-        # multipart/form-data yordamida fayl yuboramiz (Siz topgan usul)
-        headers = {'Authorization': f'Bearer {CURRENT_ACCESS_TOKEN}'}
+        # Siz topgan platform-id kiritildi (himoya uchun)
+        headers = {
+            'Authorization': f'Bearer {CURRENT_ACCESS_TOKEN}',
+            'platform-id': '7d4a4c38-dd84-4902-b744-0488b80a4c01'
+        }
         files = {'file': ('product_image.png', downloaded_file, 'image/png')}
         
         up_res = requests.post(BILLZ_UPLOAD_URL, headers=headers, files=files)
         
         if up_res.status_code in [200, 201]:
             up_data = up_res.json()
-            # Javobdan rasm ssilkasini qirqib olamiz
             img_val = None
             if 'data' in up_data:
                 if isinstance(up_data['data'], str):
@@ -265,7 +268,7 @@ def save_to_billz(message):
         "company_id": COMPANY_ID,
         "description": f"Katalog: {d['category']}, Izoh: {d['comment']}",
         "has_expiration_date": False,
-        "images": image_payload_list, # 🔥 Rasm ssilkasi shu yerda kiritildi
+        "images": image_payload_list, # 🔥 Rasm ssilkasi shu yerda ketadi
         "free_price": False,
         "is_auto_delivery": True,
         "is_auto_tax": True,
@@ -330,7 +333,7 @@ def start_edit(message):
     bot.register_next_step_handler(bot.send_message(message.chat.id, "🔍 Tahrirlash uchun ARTIKULNI kiriting:"), find_edit)
 
 def find_edit(message):
-    chat_id = message.chat.id
+    chat_id = message.message.chat.id # Bug fix
     art = message.text
     if art not in db:
         return bot.send_message(chat_id, "❌ Bunday artikul bot xotirasida yo'q. Avval yarating.")
