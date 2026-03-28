@@ -11,7 +11,7 @@ BILLZ_API_URL = os.environ.get('BILLZ_API_URL', 'https://api-admin.billz.ai/v2/p
 BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
 
-# 🔥 DO'KON VA BAZA UCHUN MAXSUS ID RAQAMLAR (Rentgendan olindi)
+# 🔥 SIZNING BAZA ID RAQAMLARINGIZ
 COMPANY_ID = "630c1af2-74be-478f-8e06-dff80bfe9edb"
 SHOP_ID = "65f67287-f129-4994-b850-03299567b4ac"
 PRODUCT_TYPE_ID = "69e939aa-9b8f-46a9-b605-8b2675475b7b"
@@ -32,7 +32,7 @@ def is_allowed(message):
     return True
 
 # ==========================================
-# 🔐 BILLZ 2.0 AVTORIZATSIYA TIZIMI
+# 🔐 BILLZ 2.0 AVTORIZATSIYA
 # ==========================================
 def get_valid_headers():
     global CURRENT_ACCESS_TOKEN
@@ -87,7 +87,7 @@ def router(message):
         start_variation(message)
 
 # ==========================================
-# 3. YANGI MAHSULOT QO'SHISH ZANJIRI
+# 3. ZANJIR (YARATISH)
 # ==========================================
 def start_new_product(message):
     chat_id = message.chat.id
@@ -208,60 +208,97 @@ def step_comment(message):
     save_to_billz(chat_id)
 
 # ==========================================
-# 🚀 4. BILLZ 2.0 GA YUBORISH (BARKOD BILAN 100% ANIQLIK)
+# 🚀 4. BILLZ 2.0 GA MUKAMMAL KLON PAYLOAD BILAN YUBORISH
 # ==========================================
 def save_to_billz(chat_id):
     bot.send_message(chat_id, "⏳ Billz tizimiga yuborilmoqda...")
     d = drafts[chat_id]
+    
     full_name = f"{d['base_name']} {d.get('var_name', '')}".strip()
+    cost_val = float(d['cost'])
+    retail_val = float(d['retail'])
+    wholesale_val = float(d['wholesale'])
     stock_val = float(d['stock'])
     
-    # 🔥 ARTIKULNI BARKOD SIFATIDA MAJBURAN BERAMIZ
+    # 📈 Dastur talab qilgan Foyda marjasini (Profit Margin) hisoblaymiz
+    profit_margin = 0
+    if cost_val > 0:
+        profit_margin = ((retail_val - cost_val) / cost_val) * 100
+
+    # 🔥 DIQQAT: SIZ TASHLA GAN PAYLOADNING 100% EGIZAGI
     payload = {
+        "additional_barcodes": [],
+        "barcode": str(d['article']),
+        "brand_id": "",
+        "brand_name": str(d['brand']),
+        "category_ids": [],
         "company_id": COMPANY_ID,
-        "product_type_id": PRODUCT_TYPE_ID,
+        "delivery_tariff_id": "",
+        "description": f"Katalog: {d['category']}, Izoh: {d['comment']}",
+        "free_price": False,
+        "has_expiration_date": False,
+        "id": "",
+        "images": [],
+        "is_auto_delivery": True,
+        "is_auto_tax": True,
+        "is_divisible": False,
+        "is_marked": False,
+        "is_variative": False,
+        "max_modificators_count": 0,
+        "measurement_type": "",
         "measurement_unit_id": MEASUREMENT_UNIT_ID,
         "name": full_name,
-        "sku": str(d['article']),     # Artikul (matn ko'rinishida)
-        "barcode": str(d['article']), # 👈 SIZ AYTGAN ASOSIY YECHIM: Barkodga artikulni biriktirdik
-        "supply_price": float(d['cost']),
-        "retail_price": float(d['retail']),
-        "description": f"Katalog: {d['category']}, Firma: {d['brand']}, Izoh: {d['comment']}",
-        "is_divisible": False,
-        "is_variative": False,
-        "is_auto_tax": True,
-        "is_auto_delivery": True,
-        "brand_id": "",
-        "category_ids": [],
-        "variants": [],
+        "packages": [],
+        "product_custom_fields": [],
+        "product_modificators": [],
+        "product_type_id": PRODUCT_TYPE_ID,
+        "profit_margin": profit_margin,
+        "related_product_ids": [],
+        "required_modificators_count": 0,
+        "retail_price": retail_val,
+        "scale_plu": None,
+        "selected_attributes": [],
+        "set_products": [],
         "shipments": [
             {
-                "shop_id": SHOP_ID,
+                "has_trigger": False,
                 "measurement_value": stock_val,
-                "total_measurement_value": stock_val,
+                "shop_id": SHOP_ID,
                 "small_left_measurement_value": 0,
-                "has_trigger": False
+                "total_measurement_value": stock_val
+            }
+        ],
+        "shop_free_prices": [
+            {
+                "sell_with_free_price": False,
+                "shop_id": SHOP_ID
             }
         ],
         "shop_measurement_values": [
             {
-                "shop_id": SHOP_ID,
+                "has_trigger": False,
                 "measurement_value": stock_val,
-                "total_measurement_value": stock_val,
+                "shop_id": SHOP_ID,
                 "small_left_measurement_value": 0,
-                "has_trigger": False
+                "total_measurement_value": stock_val
             }
         ],
         "shop_prices": [
             {
-                "shop_id": SHOP_ID,
-                "supply_price": float(d['cost']),
-                "retail_price": float(d['retail']),
-                "wholesale_price": float(d['wholesale']),
                 "max_price": 0,
-                "min_price": 0
+                "min_price": 0,
+                "retail_price": retail_val,
+                "shop_id": SHOP_ID,
+                "supply_price": cost_val,
+                "wholesale_price": wholesale_val
             }
-        ]
+        ],
+        "sku": str(d['article']),
+        "stocktaking_id": "",
+        "supplier_ids": [],
+        "supply_price": cost_val,
+        "tax_tariff_id": "",
+        "variants": []
     }
 
     try:
@@ -274,7 +311,7 @@ def save_to_billz(chat_id):
             bot.send_photo(
                 chat_id, 
                 d['photo_id'], 
-                caption=f"✅ **So'rov ketdi!**\n\nNom: {full_name}\nArtikul: {d['article']}\nBarkod: {d['article']}\n\n⚠️ Endi do'kondan qarab ko'ringchi, chiqdimi?",
+                caption=f"✅ **So'rov ketdi!**\n\nNom: {full_name}\nArtikul: {d['article']}\nBarkod: {d['article']}",
                 parse_mode="Markdown"
             )
         else:
