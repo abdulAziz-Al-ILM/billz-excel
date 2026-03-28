@@ -153,7 +153,6 @@ def handle_pricing(call):
         drafts[chat_id]['retail'] = round(cost * 1.10, 2)
         drafts[chat_id]['wholesale'] = round(cost * 1.07, 2)
         bot.edit_message_text(f"✅ Standart narxlar:\nChakana: {drafts[chat_id]['retail']}\nOptom: {drafts[chat_id]['wholesale']}", chat_id, call.message.message_id)
-        # 🔥 OPTOM QADAMI QAYTARILDI
         bot.register_next_step_handler(bot.send_message(chat_id, "7️⃣ Qanchadan boshlab optom hisoblanadi? (Raqam kiriting):"), step_optom_limit)
     else:
         markup = InlineKeyboardMarkup()
@@ -178,7 +177,6 @@ def step_man_wholesale(message):
     chat_id = message.chat.id
     val = float(message.text.replace(',', '.'))
     drafts[chat_id]['wholesale'] = val if drafts[chat_id]['man_type'] == 'man_amount' else round(drafts[chat_id]['cost'] * (1 + val/100), 2)
-    # 🔥 OPTOM QADAMI QAYTARILDI
     bot.register_next_step_handler(bot.send_message(chat_id, "7️⃣ Qanchadan boshlab optom hisoblanadi? (Raqam kiriting):"), step_optom_limit)
 
 def step_optom_limit(message):
@@ -234,7 +232,7 @@ def save_to_billz(message):
     signal_val = float(d.get('signal', 0))
     optom_limit_val = d.get('optom_limit', 'Belgilanmagan')
     
-    # 📸 1-QADAM: RASMNI TELEGRAMDAN OLIB BILLZ'GA YUKLASH
+    # 📸 1-QADAM: RASMNI YUKLASH
     image_payload_list = []
     bot.send_message(chat_id, "📸 Rasm Billz serveriga yuklanmoqda...")
     try:
@@ -277,7 +275,6 @@ def save_to_billz(message):
         "brand_name": str(d['brand']),
         "category_ids": cat_list,
         "company_id": COMPANY_ID,
-        # 🔥 OPTOM LIMITI TAVSIFGA QO'SHILDI:
         "description": f"Katalog: {d['category']} | Brend: {d['brand']} | Optom: {optom_limit_val} tadan | Izoh: {d['comment']}",
         "has_expiration_date": False,
         "images": image_payload_list,
@@ -290,7 +287,13 @@ def save_to_billz(message):
         "measurement_unit_id": MEASUREMENT_UNIT_ID,
         "name": full_name,
         "product_type_id": PRODUCT_TYPE_ID,
+        
+        # 🔥 ASOSIY VALYUTA (KGS) QO'SHILDI
         "retail_price": retail_val,
+        "retail_currency": "KGS",
+        "supply_price": cost_val,
+        "supply_currency": "KGS",
+        
         "shipments": [
             {
                 "has_trigger": False,
@@ -323,7 +326,6 @@ def save_to_billz(message):
         ],
         "sku": str(d['article']),
         "supplier_ids": [],
-        "supply_price": cost_val,
         "tax_tariff_id": "",
         "variants": [],
         "is_marked": False,
