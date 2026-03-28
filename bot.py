@@ -221,61 +221,27 @@ def save_to_billz(message):
     wholesale_val = float(d['wholesale'])
     stock_val = float(d['stock'])
     
-    # 📈 Dastur talab qilgan Foyda marjasini (Profit Margin) hisoblaymiz
-    profit_margin = 0
-    if cost_val > 0:
-        profit_margin = ((retail_val - cost_val) / cost_val) * 100
-
-    # 🔥 DIQQAT: SIZ TASHLA GAN PAYLOADNING 100% EGIZAGI
+    # 🔥 YANGA PAYLOAD: Support yuborgan JSON namunasiga 100% moslashtirildi
     payload = {
-        "additional_barcodes": [],
-        "barcode": str(d['article']), # Qat'iy string formatlandi
+        "barcode": str(d['article']), # Barkod va Artikul bir xil
         "brand_id": "",
         "brand_name": str(d['brand']),
         "category_ids": [],
         "company_id": COMPANY_ID,
-        "delivery_tariff_id": "",
         "description": f"Katalog: {d['category']}, Izoh: {d['comment']}",
-        "free_price": False,
         "has_expiration_date": False,
-        "id": "",
         "images": [],
+        "free_price": False,
         "is_auto_delivery": True,
         "is_auto_tax": True,
         "is_divisible": False,
-        "is_marked": False,
         "is_variative": False,
-        "max_modificators_count": 0,
         "measurement_type": "",
         "measurement_unit_id": MEASUREMENT_UNIT_ID,
         "name": full_name,
-        "packages": [],
-        "product_custom_fields": [],
-        "product_modificators": [],
         "product_type_id": PRODUCT_TYPE_ID,
-        "profit_margin": profit_margin,
-        "related_product_ids": [],
-        "required_modificators_count": 0,
         "retail_price": retail_val,
-        "scale_plu": None,
-        "selected_attributes": [],
-        "set_products": [],
         "shipments": [
-            {
-                "has_trigger": False,
-                "measurement_value": stock_val,
-                "shop_id": SHOP_ID,
-                "small_left_measurement_value": 0,
-                "total_measurement_value": stock_val
-            }
-        ],
-        "shop_free_prices": [
-            {
-                "sell_with_free_price": False,
-                "shop_id": SHOP_ID
-            }
-        ],
-        "shop_measurement_values": [
             {
                 "has_trigger": False,
                 "measurement_value": stock_val,
@@ -286,20 +252,21 @@ def save_to_billz(message):
         ],
         "shop_prices": [
             {
-                "max_price": 0,
-                "min_price": 0,
-                "retail_price": retail_val,
                 "shop_id": SHOP_ID,
+                "retail_price": retail_val,
                 "supply_price": cost_val,
-                "wholesale_price": wholesale_val
+                "wholesale_price": wholesale_val,
+                "min_price": 0,
+                "max_price": 0
             }
         ],
-        "sku": str(d['article']), # Qat'iy string formatlandi
-        "stocktaking_id": "",
+        "sku": str(d['article']), # Barkod va Artikul bir xil
         "supplier_ids": [],
         "supply_price": cost_val,
         "tax_tariff_id": "",
-        "variants": []
+        "variants": [],
+        "is_marked": False,
+        "scale_plu": None
     }
 
     try:
@@ -321,7 +288,7 @@ def save_to_billz(message):
     except Exception as e:
         bot.send_message(chat_id, f"❌ API xatolik: {str(e)}")
 
-    main_menu(message) # <--- xatolik aynan shu yerda edi, to'g'rilandi
+    main_menu(message)
 
 # ==========================================
 # 5. TAHRIRLASH VA VARIANT (O'ZGARISHSZ)
