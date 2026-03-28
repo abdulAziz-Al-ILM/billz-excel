@@ -205,12 +205,13 @@ def step_unit(call):
 def step_comment(message):
     chat_id = message.chat.id
     drafts[chat_id]['comment'] = message.text
-    save_to_billz(chat_id)
+    save_to_billz(message)
 
 # ==========================================
 # 🚀 4. BILLZ 2.0 GA MUKAMMAL KLON PAYLOAD BILAN YUBORISH
 # ==========================================
-def save_to_billz(chat_id):
+def save_to_billz(message):
+    chat_id = message.chat.id
     bot.send_message(chat_id, "⏳ Billz tizimiga yuborilmoqda...")
     d = drafts[chat_id]
     
@@ -228,7 +229,7 @@ def save_to_billz(chat_id):
     # 🔥 DIQQAT: SIZ TASHLA GAN PAYLOADNING 100% EGIZAGI
     payload = {
         "additional_barcodes": [],
-        "barcode": str(d['article']),
+        "barcode": str(d['article']), # Qat'iy string formatlandi
         "brand_id": "",
         "brand_name": str(d['brand']),
         "category_ids": [],
@@ -293,7 +294,7 @@ def save_to_billz(chat_id):
                 "wholesale_price": wholesale_val
             }
         ],
-        "sku": str(d['article']),
+        "sku": str(d['article']), # Qat'iy string formatlandi
         "stocktaking_id": "",
         "supplier_ids": [],
         "supply_price": cost_val,
@@ -320,7 +321,7 @@ def save_to_billz(chat_id):
     except Exception as e:
         bot.send_message(chat_id, f"❌ API xatolik: {str(e)}")
 
-    main_menu(bot.message_handler)
+    main_menu(message) # <--- xatolik aynan shu yerda edi, to'g'rilandi
 
 # ==========================================
 # 5. TAHRIRLASH VA VARIANT (O'ZGARISHSZ)
