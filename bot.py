@@ -206,39 +206,42 @@ def step_comment(message):
     save_to_billz(chat_id)
 
 # ==========================================
-# 🚀 4. BILLZGA YUBORISH (RENTGEN)
+# 🚀 4. BILLZGA YUBORISH (RENTGEN 2.0)
 # ==========================================
 def save_to_billz(chat_id):
     bot.send_message(chat_id, "⏳ Billz tizimiga yuborilmoqda...")
     d = drafts[chat_id]
     full_name = f"{d['base_name']} {d.get('var_name', '')}".strip()
     
+    # 🔥 O'ZGARISHLAR MANA SHU PAYLOAD ICHIDA!
     payload = {
-        "name": full_name,
-        "sku": d['article'],
-        "barcode": d['article'],
-        "cost": d['cost'],
-        "price": d['retail'],
-        "wholesale_price": d['wholesale'],
-        "stock": float(d['stock']),
-        "category": d['category'],
-        "brand": d['brand'],
-        "unit": d['unit'],
-        "min_stock_level": float(d['signal']),
-        "description": d['comment']
+        "product": {
+            "name": full_name,
+            "sku": d['article'],
+            "barcode": d['article'],
+            "cost": d['cost'],
+            "price": d['retail'],
+            "wholesale_price": d['wholesale'],
+            "stock": float(d['stock']),
+            "category_name": d['category'], 
+            "brand_name": d['brand'],
+            "measurement_name": d['unit'], 
+            "min_stock_level": float(d['signal']),
+            "description": d['comment'],
+            "status": "active" # Yashirin qolib ketmasligi uchun majburiy aktiv
+        }
     }
 
     try:
         response = execute_billz_request('POST', BILLZ_API_URL, payload)
         
-        # 🔍 JOSUSLIK QISMI: Billzning asl javobini Telegramga chiqaramiz
-        bot.send_message(chat_id, f"🔍 **BILLZ JAVOBI (Rentgen):**\n`{response.text}`", parse_mode="Markdown")
+        bot.send_message(chat_id, f"🔍 **BILLZ JAVOBI (Rentgen 2.0):**\n`{response.text}`", parse_mode="Markdown")
         
         if response.status_code in [200, 201]:
             try:
                 billz_data = response.json()
                 if billz_data.get('error') is None:
-                    # ID ni saqlab qolamiz
+                    
                     if isinstance(billz_data.get('data'), dict):
                         d['product_id'] = billz_data['data'].get('id', d['article'])
                     else:
@@ -248,7 +251,7 @@ def save_to_billz(chat_id):
                     bot.send_photo(
                         chat_id, 
                         d['photo_id'], 
-                        caption=f"✅ **Haqiqatan ham yaratildi!**\nNom: {full_name}\nArtikul: {payload['sku']}",
+                        caption=f"✅ **Haqiqatan ham yaratildi!**\nNom: {full_name}\nArtikul: {payload['product']['sku']}",
                         parse_mode="Markdown"
                     )
                 else:
