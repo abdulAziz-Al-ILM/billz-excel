@@ -14,7 +14,7 @@ BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
 
 # 🤖 OPENAI API KALITINGIZ (Railway'ga qo'shib qo'yasiz)
-OPENAI_API_KEY = "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" # Shu yerga o'zingizning aniq kalitingizni qoying
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
 
 BILLZ_API_BASE = 'https://api-admin.billz.ai/v2'
 BILLZ_API_POST_URL = f'{BILLZ_API_BASE}/product?Billz-Response-Channel=HTTP'
