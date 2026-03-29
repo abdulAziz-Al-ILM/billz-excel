@@ -14,7 +14,7 @@ BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
 
 # 🤖 AI API KALITINGIZ SHU YERGA KIRITILADI (Masalan: OpenAI yoki shunga o'xshash)
-AI_API_KEY = "SIZNING_AI_API_KALITINGIZ"
+AI_API_KEY = os.environ.get('AI_API_KEY', 'SIZNING_AI_API_KEYINGIZ')
 
 BILLZ_API_BASE = 'https://api-admin.billz.ai/v2'
 BILLZ_API_POST_URL = f'{BILLZ_API_BASE}/product?Billz-Response-Channel=HTTP'
