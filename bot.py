@@ -2,6 +2,9 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 import os
 import requests
+import json
+import random
+import time
 
 # ==========================================
 # 1. SOZLAMALAR VA XAVFSIZLIK
@@ -9,6 +12,9 @@ import requests
 TOKEN = os.environ.get('BOT_TOKEN', 'SIZNING_BOT_TOKENINGIZ')
 BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
+
+# 🤖 AI API KALITINGIZ SHU YERGA KIRITILADI (Masalan: OpenAI yoki shunga o'xshash)
+AI_API_KEY = "SIZNING_AI_API_KALITINGIZ"
 
 BILLZ_API_BASE = 'https://api-admin.billz.ai/v2'
 BILLZ_API_POST_URL = f'{BILLZ_API_BASE}/product?Billz-Response-Channel=HTTP'
@@ -85,28 +91,147 @@ def execute_billz_request(method, url, payload=None):
     return response
 
 # ==========================================
-# 2. ASOSIY MENU
+# 2. ASOSIY MENU (YANGI AI TUGMASI QO'SHILDI)
 # ==========================================
 @bot.message_handler(commands=['start', 'menu'])
 def main_menu(message):
     if not is_allowed(message): return
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(KeyboardButton("📦 Yangi mahsulot"))
+    markup.add(KeyboardButton("📦 Yangi mahsulot"), KeyboardButton("🤖 AI orqali yuklash"))
     markup.add(KeyboardButton("✏️ Tahrirlash"), KeyboardButton("🔀 Variant kiritish"))
     bot.send_message(message.chat.id, "Asosiy menu. Tanlang:", reply_markup=markup)
 
-@bot.message_handler(func=lambda msg: msg.text in ["📦 Yangi mahsulot", "✏️ Tahrirlash", "🔀 Variant kiritish"])
+@bot.message_handler(func=lambda msg: msg.text in ["📦 Yangi mahsulot", "🤖 AI orqali yuklash", "✏️ Tahrirlash", "🔀 Variant kiritish"])
 def router(message):
     if not is_allowed(message): return
     if message.text == "📦 Yangi mahsulot":
         start_new_product(message)
+    elif message.text == "🤖 AI orqali yuklash":
+        start_ai_upload(message)
     elif message.text == "✏️ Tahrirlash":
         start_edit(message)
     elif message.text == "🔀 Variant kiritish":
         start_variation(message)
 
 # ==========================================
-# 3. ZANJIR (YARATISH)
+# 🤖 AI PARALLEL FUNKSIYASI (YANGI ZANJIR)
+# ==========================================
+def start_ai_upload(message):
+    msg = bot.send_message(message.chat.id, "📄 Mahsulotlar ro'yxati (jadval) rasmini yuboring:\nAI uni o'qib, o'zi Billzga avtomatik joylaydi.")
+    bot.register_next_step_handler(msg, process_ai_image)
+
+def process_ai_image(message):
+    chat_id = message.chat.id
+    if not message.photo:
+        return bot.send_message(chat_id, "❌ Iltimos, faqat rasm yuboring!")
+
+    bot.send_message(chat_id, "⏳ Rasm qabul qilindi. AI jadvalni o'qib, ma'lumotlarni tahlil qilmoqda... (Biroz kutamiz)")
+    
+    # 1. Rasmni yuklab olish (Sizning API'ga yuborish uchun)
+    file_info = bot.get_file(message.photo[-1].file_id)
+    downloaded_file = bot.download_file(file_info.file_path)
+
+    # =========================================================
+    # ❗️ DIQQAT: API ULANADIGAN JOY (Bu yerga API kodingizni qo'yasiz)
+    # Siz aytgan logikani AI ga yuboramiz. 
+    # MOCK (AI yubordi deb faraz qilingan tayyor ro'yxat, test uchun):
+    # =========================================================
+    try:
+        # ai_response_text = call_your_ai_api(downloaded_file, prompt=Sizning_qoidangiz)
+        # ai_parsed_data = json.loads(ai_response_text)
+        
+        # Test qilish uchun sun'iy ma'lumot (API ulamasdan oldin test qilib oling)
+        ai_parsed_data = [
+            {"name": "DESPINA ВЫКЛ. 1 КЛАВ. ГРАФИТ", "stock": 10, "unit": "dona", "cost": 130.5, "optom_limit": 5, "signal": 2, "category": "elektr jihozlari", "brand": "DESPINA"},
+            {"name": "DESPINA РАМКА 2-Я ГРАФИТ", "stock": 16, "unit": "dona", "cost": 76.5, "optom_limit": 10, "signal": 5, "category": "elektr jihozlari", "brand": "DESPINA"}
+        ]
+        
+        bot.send_message(chat_id, f"✅ AI {len(ai_parsed_data)} ta mahsulotni aniqladi! Billzga yuklash boshlandi...")
+        
+        success_count = 0
+        for item in ai_parsed_data:
+            if auto_save_to_billz(chat_id, item):
+                success_count += 1
+                
+        bot.send_message(chat_id, f"🎉 Jarayon tugadi! Billzga avtomatik {success_count} ta mahsulot qo'shildi.")
+        main_menu(message)
+        
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ AI xatosi yuz berdi: {str(e)}")
+        main_menu(message)
+
+def auto_save_to_billz(chat_id, p_data):
+    """ AI orqali kelgan ma'lumotni Billz formatiga solib jo'natadi """
+    full_name = p_data.get('name', 'Nomsiz')
+    cost_val = float(p_data.get('cost', 0))
+    stock_val = float(p_data.get('stock', 0))
+    brand_name = p_data.get('brand', '-')
+    category_name = p_data.get('category', 'boshqa')
+    optom_limit_val = p_data.get('optom_limit', 5)
+    signal_val = float(p_data.get('signal', 1))
+    
+    # +10% va +7% logika botning o'zida hisoblanadi
+    retail_val = round(cost_val * 1.10, 2)
+    wholesale_val = round(cost_val * 1.07, 2)
+    
+    # 🤖 AI Artikul yaratilishi
+    ai_article = f"AI-kirgizdi-{random.randint(1000, 9999)}"
+    
+    cat_id = CATEGORIES_DB.get(category_name, "")
+    cat_list = [cat_id] if cat_id else []
+
+    payload = {
+        "barcode": ai_article,
+        "brand_id": "",
+        "brand_name": brand_name,
+        "category_ids": cat_list,
+        "company_id": COMPANY_ID,
+        "description": f"Katalog: {category_name} | Brend: {brand_name} | Optom: {optom_limit_val} tadan | Izoh: AI ro'yxatdan kiritdi",
+        "has_expiration_date": False,
+        "images": [], # AI rasmsiz yuboradi, keyin o'zingiz qo'shasiz
+        "free_price": False,
+        "is_auto_delivery": True,
+        "is_auto_tax": True,
+        "is_divisible": False,
+        "is_variative": False,
+        "measurement_type": "",
+        "measurement_unit_id": MEASUREMENT_UNIT_ID,
+        "name": full_name,
+        "product_type_id": PRODUCT_TYPE_ID,
+        "retail_price": retail_val,
+        "retail_currency": "KGS",
+        "supply_price": cost_val,
+        "supply_currency": "KGS",
+        "wholesale_currency": "KGS",
+        "currency": "KGS",
+        "shipments": [{"has_trigger": False, "measurement_value": stock_val, "shop_id": SHOP_ID, "small_left_measurement_value": signal_val, "total_measurement_value": stock_val}],
+        "shop_measurement_values": [{"has_trigger": False, "measurement_value": stock_val, "shop_id": SHOP_ID, "small_left_measurement_value": signal_val, "total_measurement_value": stock_val}],
+        "shop_prices": [{"shop_id": SHOP_ID, "retail_price": retail_val, "supply_price": cost_val, "wholesale_price": wholesale_val, "min_price": 0, "max_price": 0, "retail_currency": "KGS", "supply_currency": "KGS", "wholesale_currency": "KGS", "currency": "KGS"}],
+        "sku": ai_article,
+        "supplier_ids": [],
+        "tax_tariff_id": "",
+        "variants": [],
+        "is_marked": False,
+        "scale_plu": None
+    }
+
+    try:
+        response = execute_billz_request('POST', BILLZ_API_POST_URL, payload)
+        if response.status_code in [200, 201]:
+            # Bazaga eslab qolamiz (Tahrirlash ishlashi uchun)
+            p_data['article'] = ai_article
+            p_data['base_name'] = full_name
+            db[ai_article] = p_data
+            return True
+        else:
+            bot.send_message(chat_id, f"⚠️ '{full_name}' qo'shilmadi: {response.status_code}")
+            return False
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ Dasturiy xato: {str(e)}")
+        return False
+
+# ==========================================
+# 3. ZANJIR (QO'LDA YARATISH) - SIZNING ORIGINAL KODINGIZ
 # ==========================================
 def start_new_product(message):
     chat_id = message.chat.id
@@ -232,7 +357,6 @@ def save_to_billz(message):
     signal_val = float(d.get('signal', 0))
     optom_limit_val = d.get('optom_limit', 'Belgilanmagan')
     
-    # 📸 1-QADAM: RASMNI YUKLASH
     image_payload_list = []
     bot.send_message(chat_id, "📸 Rasm Billz serveriga yuklanmoqda...")
     try:
@@ -268,7 +392,6 @@ def save_to_billz(message):
     cat_id = CATEGORIES_DB.get(d['category'], "")
     cat_list = [cat_id] if cat_id else []
 
-    # 📦 2-QADAM: ASOSIY TO'VARNI YUBORISH
     payload = {
         "barcode": str(d['article']),
         "brand_id": "",
@@ -287,43 +410,15 @@ def save_to_billz(message):
         "measurement_unit_id": MEASUREMENT_UNIT_ID,
         "name": full_name,
         "product_type_id": PRODUCT_TYPE_ID,
-        
-        # 🔥 ASOSIY VALYUTA (KGS) QO'SHILDI
         "retail_price": retail_val,
         "retail_currency": "KGS",
         "supply_price": cost_val,
         "supply_currency": "KGS",
-        
-        "shipments": [
-            {
-                "has_trigger": False,
-                "measurement_value": stock_val,
-                "shop_id": SHOP_ID,
-                "small_left_measurement_value": signal_val,
-                "total_measurement_value": stock_val
-            }
-        ],
-        "shop_measurement_values": [
-            {
-                "has_trigger": False,
-                "measurement_value": stock_val,
-                "shop_id": SHOP_ID,
-                "small_left_measurement_value": signal_val,
-                "total_measurement_value": stock_val
-            }
-        ],
-        "shop_prices": [
-            {
-                "shop_id": SHOP_ID,
-                "retail_price": retail_val,
-                "supply_price": cost_val,
-                "wholesale_price": wholesale_val,
-                "min_price": 0,
-                "max_price": 0,
-                "retail_currency": "KGS",
-                "supply_currency": "KGS"
-            }
-        ],
+        "wholesale_currency": "KGS",
+        "currency": "KGS",
+        "shipments": [{"has_trigger": False, "measurement_value": stock_val, "shop_id": SHOP_ID, "small_left_measurement_value": signal_val, "total_measurement_value": stock_val}],
+        "shop_measurement_values": [{"has_trigger": False, "measurement_value": stock_val, "shop_id": SHOP_ID, "small_left_measurement_value": signal_val, "total_measurement_value": stock_val}],
+        "shop_prices": [{"shop_id": SHOP_ID, "retail_price": retail_val, "supply_price": cost_val, "wholesale_price": wholesale_val, "min_price": 0, "max_price": 0, "currency": "KGS", "retail_currency": "KGS", "supply_currency": "KGS", "wholesale_currency": "KGS"}],
         "sku": str(d['article']),
         "supplier_ids": [],
         "tax_tariff_id": "",
@@ -334,25 +429,18 @@ def save_to_billz(message):
 
     try:
         response = execute_billz_request('POST', BILLZ_API_POST_URL, payload)
-        
         if response.status_code in [200, 201]:
             db[d['article']] = d 
-            bot.send_photo(
-                chat_id, 
-                d['photo_id'], 
-                caption=f"✅ **Barcha so'rovlar muvaffaqiyatli ketdi!**\n\nNom: {full_name}\nArtikul: {d['article']}\nOptom: {optom_limit_val} tadan",
-                parse_mode="Markdown"
-            )
+            bot.send_photo(chat_id, d['photo_id'], caption=f"✅ **Barcha so'rovlar muvaffaqiyatli ketdi!**\n\nNom: {full_name}\nArtikul: {d['article']}\nOptom: {optom_limit_val} tadan", parse_mode="Markdown")
         else:
             bot.send_message(chat_id, f"❌ Billz to'varni qabul qilmadi!\nKodi: {response.status_code}\nSabab: {response.text}")
-            
     except Exception as e:
         bot.send_message(chat_id, f"❌ API xatolik: {str(e)}")
 
     main_menu(message)
 
 # ==========================================
-# 5. TAHRIRLASH VA VARIANT 
+# 5. TAHRIRLASH VA VARIANT [ESKI HOLATDA QOLDI]
 # ==========================================
 def start_edit(message):
     bot.register_next_step_handler(bot.send_message(message.chat.id, "🔍 Tahrirlash uchun ARTIKULNI kiriting:"), find_edit)
