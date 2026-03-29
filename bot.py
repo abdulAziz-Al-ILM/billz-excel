@@ -4,7 +4,7 @@ import os
 import requests
 import json
 import random
-import time
+import base64
 
 # ==========================================
 # 1. SOZLAMALAR VA XAVFSIZLIK
@@ -13,8 +13,8 @@ TOKEN = os.environ.get('BOT_TOKEN', 'SIZNING_BOT_TOKENINGIZ')
 BILLZ_API_TOKEN = os.environ.get('BILLZ_API_TOKEN', 'SIZNING_BILLZ_TOKENINGIZ')
 ALLOWED_USERS = [x.strip() for x in os.environ.get('ALLOWED_USERS', '').split(',') if x.strip()]
 
-# 🤖 AI API KALITINGIZ SHU YERGA KIRITILADI (Masalan: OpenAI yoki shunga o'xshash)
-AI_API_KEY = os.environ.get('AI_API_KEY', 'SIZNING_AI_API_KEYINGIZ')
+# 🤖 OPENAI API KALITINGIZ (Railway'ga qo'shib qo'yasiz)
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', 'sk-SIZNING_OPENAI_KALITINGIZ')
 
 BILLZ_API_BASE = 'https://api-admin.billz.ai/v2'
 BILLZ_API_POST_URL = f'{BILLZ_API_BASE}/product?Billz-Response-Channel=HTTP'
@@ -91,7 +91,7 @@ def execute_billz_request(method, url, payload=None):
     return response
 
 # ==========================================
-# 2. ASOSIY MENU (YANGI AI TUGMASI QO'SHILDI)
+# 2. ASOSIY MENU
 # ==========================================
 @bot.message_handler(commands=['start', 'menu'])
 def main_menu(message):
@@ -114,10 +114,10 @@ def router(message):
         start_variation(message)
 
 # ==========================================
-# 🤖 AI PARALLEL FUNKSIYASI (YANGI ZANJIR)
+# 🤖 HAQIQIY OPENAI PARALLEL FUNKSIYASI
 # ==========================================
 def start_ai_upload(message):
-    msg = bot.send_message(message.chat.id, "📄 Mahsulotlar ro'yxati (jadval) rasmini yuboring:\nAI uni o'qib, o'zi Billzga avtomatik joylaydi.")
+    msg = bot.send_message(message.chat.id, "📄 Mahsulotlar ro'yxati (jadval) rasmini yuboring:")
     bot.register_next_step_handler(msg, process_ai_image)
 
 def process_ai_image(message):
@@ -125,39 +125,79 @@ def process_ai_image(message):
     if not message.photo:
         return bot.send_message(chat_id, "❌ Iltimos, faqat rasm yuboring!")
 
-    bot.send_message(chat_id, "⏳ Rasm qabul qilindi. AI jadvalni o'qib, ma'lumotlarni tahlil qilmoqda... (Biroz kutamiz)")
+    msg_wait = bot.send_message(chat_id, "⏳ Rasm qabul qilindi. AI jadvalni o'qib, tahlil qilmoqda... (Bu 10-20 soniya olishi mumkin, kuting)")
     
-    # 1. Rasmni yuklab olish (Sizning API'ga yuborish uchun)
-    file_info = bot.get_file(message.photo[-1].file_id)
-    downloaded_file = bot.download_file(file_info.file_path)
-
-    # =========================================================
-    # ❗️ DIQQAT: API ULANADIGAN JOY (Bu yerga API kodingizni qo'yasiz)
-    # Siz aytgan logikani AI ga yuboramiz. 
-    # MOCK (AI yubordi deb faraz qilingan tayyor ro'yxat, test uchun):
-    # =========================================================
     try:
-        # ai_response_text = call_your_ai_api(downloaded_file, prompt=Sizning_qoidangiz)
-        # ai_parsed_data = json.loads(ai_response_text)
+        # 1. Rasmni yuklab olish va Base64 ga o'tkazish
+        file_info = bot.get_file(message.photo[-1].file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        base64_image = base64.b64encode(downloaded_file).decode('utf-8')
+
+        # 2. OpenAI API ga yuboriladigan qat'iy PROMPT
+        prompt = """Sen qurilish mollari do'koni uchun OCR yordamchisan. Rasmdagi jadvalni o'qi va tahlil qil.
+QOIDALAR:
+- 1-ustunni (Tartib raqam) tashlab yubor.
+- 2-ustundan Nomini ol. Asliga umuman tegma.
+- 3-ustunni tashlab yubor.
+- 4-ustun (Qoldiq/Soni): masalan "17,000" ni 17 deb tushun.
+- 5-ustun (O'lchov birligi): o'zing mantiqan top yoki ustundan o'qib ol.
+- 6-ustun (Kelish narxi): masalan "130,5000" ni 130.5 qilib floatga o'tkaz.
+- 7-ustunni tashlab yubor.
+
+Qo'shimcha o'zing mantiqan top:
+- "optom_limit": nechtadan keyin optom bo'lishi (raqam).
+- "signal": kam qoldiq ogohlantirishi (raqam).
+- "brand": nomidan brendni top, qiyin bo'lsa "-" qo'y (masalan, DESPINA).
+- "category": faqat quyidagilardan birini tanla: elektr jihozlari, santexnika, qurilish qorishmalari, bo'yoqlar va emulsiya, kafel va plitkalar, asbob-uskunalar, issiqlik izolyatsiyasi, xo'jalik mollari, pena, silikon va yelimlar, pardozlash materiallari, mayda qotirish vositalari, plintus va profillar, muhandislik tizimlari, boshqa.
+
+NATIJA FORMATI: Menga faqat valid JSON massiv (array) qaytar, atrofida hech qanday ortiqcha gap-so'z, hatto ```json belgilari ham bo'lmasin. Faqat [ bilan boshlanib ] bilan tugasin."""
+
+        # 3. OpenAI GPT-4o ga so'rov yuborish
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
+        }
         
-        # Test qilish uchun sun'iy ma'lumot (API ulamasdan oldin test qilib oling)
-        ai_parsed_data = [
-            {"name": "DESPINA ВЫКЛ. 1 КЛАВ. ГРАФИТ", "stock": 10, "unit": "dona", "cost": 130.5, "optom_limit": 5, "signal": 2, "category": "elektr jihozlari", "brand": "DESPINA"},
-            {"name": "DESPINA РАМКА 2-Я ГРАФИТ", "stock": 16, "unit": "dona", "cost": 76.5, "optom_limit": 10, "signal": 5, "category": "elektr jihozlari", "brand": "DESPINA"}
-        ]
+        payload = {
+            "model": "gpt-4o",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                    ]
+                }
+            ],
+            "max_tokens": 4000,
+            "temperature": 0.1
+        }
         
-        bot.send_message(chat_id, f"✅ AI {len(ai_parsed_data)} ta mahsulotni aniqladi! Billzga yuklash boshlandi...")
+        response = requests.post("[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)", headers=headers, json=payload)
+        response_data = response.json()
+        
+        if 'error' in response_data:
+            raise Exception(response_data['error']['message'])
+            
+        ai_response_text = response_data['choices'][0]['message']['content']
+        
+        # OpenAI ba'zida qavslar ichiga olib qoladi, shuni tozalaymiz
+        ai_response_text = ai_response_text.replace('```json', '').replace('```', '').strip()
+        
+        ai_parsed_data = json.loads(ai_response_text)
+        
+        bot.edit_message_text(f"✅ AI {len(ai_parsed_data)} ta mahsulotni aniqladi! Billzga yuklash boshlandi...", chat_id, msg_wait.message_id)
         
         success_count = 0
         for item in ai_parsed_data:
             if auto_save_to_billz(chat_id, item):
                 success_count += 1
                 
-        bot.send_message(chat_id, f"🎉 Jarayon tugadi! Billzga avtomatik {success_count} ta mahsulot qo'shildi.")
+        bot.send_message(chat_id, f"🎉 Jarayon tugadi! Billzga avtomatik {success_count} / {len(ai_parsed_data)} ta mahsulot qo'shildi.")
         main_menu(message)
         
     except Exception as e:
-        bot.send_message(chat_id, f"❌ AI xatosi yuz berdi: {str(e)}")
+        bot.send_message(chat_id, f"❌ AI xatosi yuz berdi: {str(e)}\n\n(Railway'da OPENAI_API_KEY to'g'ri kiritilganligini tekshiring).")
         main_menu(message)
 
 def auto_save_to_billz(chat_id, p_data):
@@ -188,7 +228,7 @@ def auto_save_to_billz(chat_id, p_data):
         "company_id": COMPANY_ID,
         "description": f"Katalog: {category_name} | Brend: {brand_name} | Optom: {optom_limit_val} tadan | Izoh: AI ro'yxatdan kiritdi",
         "has_expiration_date": False,
-        "images": [], # AI rasmsiz yuboradi, keyin o'zingiz qo'shasiz
+        "images": [], 
         "free_price": False,
         "is_auto_delivery": True,
         "is_auto_tax": True,
@@ -218,7 +258,6 @@ def auto_save_to_billz(chat_id, p_data):
     try:
         response = execute_billz_request('POST', BILLZ_API_POST_URL, payload)
         if response.status_code in [200, 201]:
-            # Bazaga eslab qolamiz (Tahrirlash ishlashi uchun)
             p_data['article'] = ai_article
             p_data['base_name'] = full_name
             db[ai_article] = p_data
@@ -231,7 +270,7 @@ def auto_save_to_billz(chat_id, p_data):
         return False
 
 # ==========================================
-# 3. ZANJIR (QO'LDA YARATISH) - SIZNING ORIGINAL KODINGIZ
+# 3. ZANJIR (QO'LDA YARATISH)
 # ==========================================
 def start_new_product(message):
     chat_id = message.chat.id
@@ -440,7 +479,7 @@ def save_to_billz(message):
     main_menu(message)
 
 # ==========================================
-# 5. TAHRIRLASH VA VARIANT [ESKI HOLATDA QOLDI]
+# 5. TAHRIRLASH VA VARIANT
 # ==========================================
 def start_edit(message):
     bot.register_next_step_handler(bot.send_message(message.chat.id, "🔍 Tahrirlash uchun ARTIKULNI kiriting:"), find_edit)
