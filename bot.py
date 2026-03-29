@@ -152,7 +152,7 @@ Qo'shimcha o'zing mantiqan top:
 
 NATIJA FORMATI: Menga faqat valid JSON massiv (array) qaytar, atrofida hech qanday ortiqcha gap-so'z, hatto ```json belgilari ham bo'lmasin. Faqat [ bilan boshlanib ] bilan tugasin."""
 
-        # 3. OpenAI GPT-4o ga so'rov yuborish
+        # 3. OpenAI GPT-4o ga so'rov
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {OPENAI_API_KEY}"
@@ -173,15 +173,13 @@ NATIJA FORMATI: Menga faqat valid JSON massiv (array) qaytar, atrofida hech qand
             "temperature": 0.1
         }
         
-        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+        response = requests.post("[https://api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)", headers=headers, json=payload)
         response_data = response.json()
         
         if 'error' in response_data:
             raise Exception(response_data['error']['message'])
             
         ai_response_text = response_data['choices'][0]['message']['content']
-        
-        # OpenAI ba'zida qavslar ichiga olib qoladi, shuni tozalaymiz
         ai_response_text = ai_response_text.replace('```json', '').replace('```', '').strip()
         
         ai_parsed_data = json.loads(ai_response_text)
@@ -192,12 +190,14 @@ NATIJA FORMATI: Menga faqat valid JSON massiv (array) qaytar, atrofida hech qand
         for item in ai_parsed_data:
             if auto_save_to_billz(chat_id, item):
                 success_count += 1
+            # 🔥 SPAMNING OLDINI OLISH UCHUN 1.5 SONIYA KUTAMIZ
+            time.sleep(1.5) 
                 
         bot.send_message(chat_id, f"🎉 Jarayon tugadi! Billzga avtomatik {success_count} / {len(ai_parsed_data)} ta mahsulot qo'shildi.")
         main_menu(message)
         
     except Exception as e:
-        bot.send_message(chat_id, f"❌ AI xatosi yuz berdi: {str(e)}\n\n(Railway'da OPENAI_API_KEY to'g'ri kiritilganligini tekshiring).")
+        bot.send_message(chat_id, f"❌ AI xatosi yuz berdi: {str(e)}")
         main_menu(message)
 
 def auto_save_to_billz(chat_id, p_data):
@@ -384,62 +384,45 @@ def step_comment(message):
 # ==========================================
 # 🚀 4. BILLZ 2.0 GA MUKAMMAL YUBORISH
 # ==========================================
-def save_to_billz(message):
-    chat_id = message.chat.id
-    d = drafts[chat_id]
-    
-    full_name = f"{d['base_name']} {d.get('var_name', '')}".strip()
-    cost_val = float(d['cost'])
-    retail_val = float(d['retail'])
-    wholesale_val = float(d['wholesale'])
-    stock_val = float(d.get('stock', 0))
-    signal_val = float(d.get('signal', 0))
-    optom_limit_val = d.get('optom_limit', 'Belgilanmagan')
-    
-    image_payload_list = []
-    bot.send_message(chat_id, "📸 Rasm Billz serveriga yuklanmoqda...")
+def auto_save_to_billz(chat_id, p_data):
+    full_name = str(p_data.get('name', 'Nomsiz')).strip()
+    # Narx va qoldiq bo'sh bo'lsa yoki string kelsa xato bermasligi uchun himoya
     try:
-        file_info = bot.get_file(d['photo_id'])
-        downloaded_file = bot.download_file(file_info.file_path)
+        cost_val = float(p_data.get('cost', 0))
+    except (ValueError, TypeError):
+        cost_val = 0.0
         
-        headers = {
-            'Authorization': f'Bearer {CURRENT_ACCESS_TOKEN}',
-            'platform-id': '7d4a4c38-dd84-4902-b744-0488b80a4c01'
-        }
-        files = {'file': ('product_image.png', downloaded_file, 'image/png')}
-        
-        up_res = requests.post(BILLZ_UPLOAD_URL, headers=headers, files=files)
-        
-        if up_res.status_code in [200, 201]:
-            up_data = up_res.json()
-            img_val = None
-            if 'data' in up_data:
-                if isinstance(up_data['data'], str):
-                    img_val = up_data['data']
-                elif isinstance(up_data['data'], dict):
-                    img_val = up_data['data'].get('url', up_data['data'].get('id', str(up_data['data'])))
-            else:
-                img_val = up_data.get('url', str(up_data))
-                
-            image_payload_list = [img_val] if img_val else []
-            bot.send_message(chat_id, "✅ Rasm omborga joylandi. Endi to'var yuborilmoqda...")
-        else:
-            bot.send_message(chat_id, f"⚠️ Rasm yuklashda xato (kod {up_res.status_code}): {up_res.text}")
-    except Exception as e:
-        bot.send_message(chat_id, f"⚠️ Botda rasm ishlash xatosi: {e}")
+    try:
+        stock_val = float(p_data.get('stock', 0))
+    except (ValueError, TypeError):
+        stock_val = 0.0
 
-    cat_id = CATEGORIES_DB.get(d['category'], "")
+    brand_name = str(p_data.get('brand', '-')).strip()
+    category_name = str(p_data.get('category', 'boshqa')).strip()
+    optom_limit_val = str(p_data.get('optom_limit', '5'))
+    
+    try:
+        signal_val = float(p_data.get('signal', 1))
+    except (ValueError, TypeError):
+        signal_val = 1.0
+    
+    retail_val = round(cost_val * 1.10, 2)
+    wholesale_val = round(cost_val * 1.07, 2)
+    
+    ai_article = f"AI-{int(time.time())}-{random.randint(10, 99)}"
+    
+    cat_id = CATEGORIES_DB.get(category_name, "")
     cat_list = [cat_id] if cat_id else []
 
     payload = {
-        "barcode": str(d['article']),
+        "barcode": ai_article,
         "brand_id": "",
-        "brand_name": str(d['brand']),
+        "brand_name": brand_name,
         "category_ids": cat_list,
         "company_id": COMPANY_ID,
-        "description": f"Katalog: {d['category']} | Brend: {d['brand']} | Optom: {optom_limit_val} tadan | Izoh: {d['comment']}",
+        "description": f"Katalog: {category_name} | Brend: {brand_name} | Optom: {optom_limit_val} tadan | Izoh: AI ro'yxatdan kiritdi",
         "has_expiration_date": False,
-        "images": image_payload_list,
+        "images": [], 
         "free_price": False,
         "is_auto_delivery": True,
         "is_auto_tax": True,
@@ -457,8 +440,8 @@ def save_to_billz(message):
         "currency": "KGS",
         "shipments": [{"has_trigger": False, "measurement_value": stock_val, "shop_id": SHOP_ID, "small_left_measurement_value": signal_val, "total_measurement_value": stock_val}],
         "shop_measurement_values": [{"has_trigger": False, "measurement_value": stock_val, "shop_id": SHOP_ID, "small_left_measurement_value": signal_val, "total_measurement_value": stock_val}],
-        "shop_prices": [{"shop_id": SHOP_ID, "retail_price": retail_val, "supply_price": cost_val, "wholesale_price": wholesale_val, "min_price": 0, "max_price": 0, "currency": "KGS", "retail_currency": "KGS", "supply_currency": "KGS", "wholesale_currency": "KGS"}],
-        "sku": str(d['article']),
+        "shop_prices": [{"shop_id": SHOP_ID, "retail_price": retail_val, "supply_price": cost_val, "wholesale_price": wholesale_val, "min_price": 0, "max_price": 0, "retail_currency": "KGS", "supply_currency": "KGS", "wholesale_currency": "KGS", "currency": "KGS"}],
+        "sku": ai_article,
         "supplier_ids": [],
         "tax_tariff_id": "",
         "variants": [],
@@ -469,12 +452,17 @@ def save_to_billz(message):
     try:
         response = execute_billz_request('POST', BILLZ_API_POST_URL, payload)
         if response.status_code in [200, 201]:
-            db[d['article']] = d 
-            bot.send_photo(chat_id, d['photo_id'], caption=f"✅ **Barcha so'rovlar muvaffaqiyatli ketdi!**\n\nNom: {full_name}\nArtikul: {d['article']}\nOptom: {optom_limit_val} tadan", parse_mode="Markdown")
+            p_data['article'] = ai_article
+            p_data['base_name'] = full_name
+            db[ai_article] = p_data
+            return True
         else:
-            bot.send_message(chat_id, f"❌ Billz to'varni qabul qilmadi!\nKodi: {response.status_code}\nSabab: {response.text}")
+            # 🔥 XATONI ANIQ KO'RSATADIGAN "AYG'OQCHI" QATOR
+            bot.send_message(chat_id, f"⚠️ '{full_name}' Billzga o'tmadi!\nSabab: {response.text}")
+            return False
     except Exception as e:
-        bot.send_message(chat_id, f"❌ API xatolik: {str(e)}")
+        bot.send_message(chat_id, f"❌ Dasturiy xato: {str(e)}")
+        return False
 
     main_menu(message)
 
