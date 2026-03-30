@@ -6,6 +6,7 @@ import json
 import random
 import time
 import base64
+import re
 
 # ==========================================
 # 1. SOZLAMALAR VA XAVFSIZLIK
@@ -193,17 +194,25 @@ Misol: [{"name": "M DESPINA Антрацит Выключатель одинар
         if 'error' in response_data:
             raise Exception(response_data['error']['message'])
             
-        ai_response_text = response_data['choices'][0]['message']['content']
-        ai_response_text = ai_response_text.replace('```json', '').replace('```', '').strip()
+        ai_response_text = response_data['choices'][0]['message']['content'].strip()
         
-        ai_parsed_data = json.loads(ai_response_text)
+        # 🎯 SNAYPER: AI nima gap yozishidan qat'i nazar, faqat [ ] ichidagi JSONni qirqib olamiz
+        json_match = re.search(r'\[.*\]', ai_response_text, re.DOTALL)
+        
+        if not json_match:
+            # Agar umuman JSON topa olmasa, AI nima deganini ochiqcha tashlaymiz:
+            raise Exception(f"AI kutilgan formatda javob bermadi.\nAI JAVOBI: {ai_response_text[:500]}")
+            
+        json_str = json_match.group(0)
+        
+        try:
+            ai_parsed_data = json.loads(json_str)
+        except Exception as e:
+            raise Exception(f"JSON o'qishda xato: {str(e)}\nAI JAVOBI: {json_str[:500]}")
         
         # Ma'lumotni eslab qolish (Tasdiqlash uchun)
         if chat_id not in drafts: drafts[chat_id] = {}
         drafts[chat_id]['ai_parsed_data'] = ai_parsed_data
-        
-        # Chiroyli qilib matn formatiga solamiz (Foydalanuvchi o'qishi oson bo'lishi uchun indent=2)
-        formatted_json = json.dumps(ai_parsed_data, indent=2, ensure_ascii=False)
         
         # Tugmalar
         markup = InlineKeyboardMarkup(row_width=2)
