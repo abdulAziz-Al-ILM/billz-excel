@@ -136,24 +136,34 @@ def process_ai_image(message):
         downloaded_file = bot.download_file(file_info.file_path)
         base64_image = base64.b64encode(downloaded_file).decode('utf-8')
 
-        prompt = """Sen qurilish mollari do'koni uchun OCR yordamchisan. Rasmdagi jadvalni o'qi va tahlil qil.
-QOIDALAR:
-- 1-ustunni (Tartib raqam) tashlab yubor.
-- 2-ustundan Nomini ol. Asliga umuman tegma.
-- 3-ustunni tashlab yubor.
-- 4-ustun (Qoldiq/Soni): masalan "17,000" ni 17 deb tushun.
-- 5-ustun (O'lchov birligi): o'zing mantiqan top yoki ustundan o'qib ol.
-- 6-ustun (Kelish narxi): masalan "130,5000" ni 130.5 qilib floatga o'tkaz.
-- 7-ustunni tashlab yubor.
+        prompt = """Sen professional OCR tizimisan. Rasmda qurilish mollari jadvali berilgan. Jadvalni 1-qatoridan boshlab eng oxirgi qatorigacha (taxminan 40 ta) qat'iy o'qib chiq. Hech qaysi qator qolib ketmasin!
 
-Qo'shimcha o'zing mantiqan top:
-- "optom_limit": nechtadan keyin optom bo'lishi (raqam).
-- "signal": kam qoldiq ogohlantirishi (raqam).
-- "brand": nomidan brendni top, qiyin bo'lsa "-" qo'y.
+QOG'OZ VA YOZUVLAR BILAN ISHLASH (MUHIM):
+- Matnlar ustidan ruchkada chizilgan belgilarni ('V', krestik, to'lqinli chiziqlar) UMEMAN KO'RMASLIKKA OL.
+- Ular so'zning bir qismi emas. Masalan, 'M' harfi ustiga chizilgan bo'lsa, uni 'B/p' deb o'qima, u 'M' deb qoladi (M DESPINA).
+- Harflar qanday bosma yozilgan bo'lsa, xuddi shunday toza qilib ko'chir.
+
+USTUNLARNI QANDAY OLISH KЕRAK:
+- 1-ustun (Raqam) -> Tashlab yubor!
+- 2-ustun (Nomi) -> Asliga tegmasdan ol.
+- 3-ustun (Shtrixkod) -> Tashlab yubor!
+- 4-ustun (Qoldiq/Soni) -> "10,000 шт" ni "10" deb butun son qilib ol.
+- 5-ustun (O'lchov birligi) -> Faqat dona, metr, litr, kg, quti, komplekt, rulon, sht deganlaridan birini yoz.
+- 6-ustun (Narx) -> "130,5000" ni "130.5" qilib float turida yoz.
+- 7-ustun -> Tashlab yubor!
+
+Qo'shimcha maydonlar (o'zing top):
+- "optom_limit": nechtadan keyin optom bo'lishi (raqam, masalan 5)
+- "signal": qancha qolganda ogohlantirsin (raqam, masalan 2)
+- "brand": nomidan top, agar nomida brend bo'lmasa "-" qo'y (Misollar: DESPINA, People, VOLTAGE)
 - "category": faqat quyidagilardan birini tanla: elektr jihozlari, santexnika, qurilish qorishmalari, bo'yoqlar va emulsiya, kafel va plitkalar, asbob-uskunalar, issiqlik izolyatsiyasi, xo'jalik mollari, pena, silikon va yelimlar, pardozlash materiallari, mayda qotirish vositalari, plintus va profillar, muhandislik tizimlari, boshqa.
 
-NATIJA FORMATI: Menga faqat valid JSON massiv (array) qaytar, atrofida hech qanday ortiqcha gap-so'z, hatto ```json belgilari ham bo'lmasin. Faqat [ bilan boshlanib ] bilan tugasin."""
+NATIJA FORMATI QAT'IY TALABI (Buzish taqiqlanadi):
+JSON kalitlari FAqat inglizcha bo'lishi shart! (name, stock, unit, cost, optom_limit, signal, brand, category). "nomi", "narxi" kabi so'zlarni ishlatma!
 
+Menga faqat valid JSON massiv qaytar, boshida [ bilan boshlanib oxirida ] bilan tugasin. Hech qanday ```json belgilari va qo'shimcha izohlar bo'lmasin.
+Misol: [{"name": "M DESPINA Антрацит Выключатель одинарный (1ый)", "stock": 10, "unit": "sht", "cost": 130.5, "optom_limit": 5, "signal": 2, "brand": "DESPINA", "category": "elektr jihozlari"}]
+"""
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {OPENAI_API_KEY}"
