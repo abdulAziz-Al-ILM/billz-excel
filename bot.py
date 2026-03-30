@@ -186,7 +186,11 @@ Misol: [{"name": "M DESPINA Антрацит Выключатель одинар
             "temperature": 0.1
         }
         
-        openai_url = "https://" + "[api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)"
+        # 🎯 100% KAFOLATLANGAN USUL (Shifrlangan manzil)
+        # Hech qanday chat yoki redaktor buni ssilka deb o'zgartira olmaydi:
+        encoded_url = "aHR0cHM6Ly9hcGkub3BlbmFpLmNvbS92MS9jaGF0L2NvbXBsZXRpb25z"
+        openai_url = base64.b64decode(encoded_url).decode('utf-8')
+        
         response = requests.post(openai_url, headers=headers, json=payload)
         response_data = response.json()
         
