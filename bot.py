@@ -165,6 +165,7 @@ JSON kalitlari FAqat inglizcha bo'lishi shart! (name, stock, unit, cost, optom_l
 Menga faqat valid JSON massiv qaytar, boshida [ bilan boshlanib oxirida ] bilan tugasin. Hech qanday ```json belgilari va qo'shimcha izohlar bo'lmasin.
 Misol: [{"name": "M DESPINA Антрацит Выключатель одинарный (1ый)", "stock": 10, "unit": "sht", "cost": 130.5, "optom_limit": 5, "signal": 2, "brand": "DESPINA", "category": "elektr jihozlari"}]
 """
+
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {OPENAI_API_KEY}"
@@ -185,10 +186,8 @@ Misol: [{"name": "M DESPINA Антрацит Выключатель одинар
             "temperature": 0.1
         }
         
-        # Ssilka ikkiga bo'lindi (Avtomatik havola bo'lib qolmasligi uchun)
-        # Tizim ssilka ekanligini umuman taniy olmasligi uchun uni bo'laklab yig'amiz:
-        p1, p2, p3 = "https://api", ".openai.com", "/v1/chat/completions"
-        response = requests.post(p1 + p2 + p3, headers=headers, json=payload)
+        openai_url = "https://" + "[api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)"
+        response = requests.post(openai_url, headers=headers, json=payload)
         response_data = response.json()
         
         if 'error' in response_data:
@@ -200,7 +199,6 @@ Misol: [{"name": "M DESPINA Антрацит Выключатель одинар
         json_match = re.search(r'\[.*\]', ai_response_text, re.DOTALL)
         
         if not json_match:
-            # Agar umuman JSON topa olmasa, AI nima deganini ochiqcha tashlaymiz:
             raise Exception(f"AI kutilgan formatda javob bermadi.\nAI JAVOBI: {ai_response_text[:500]}")
             
         json_str = json_match.group(0)
@@ -213,6 +211,9 @@ Misol: [{"name": "M DESPINA Антрацит Выключатель одинар
         # Ma'lumotni eslab qolish (Tasdiqlash uchun)
         if chat_id not in drafts: drafts[chat_id] = {}
         drafts[chat_id]['ai_parsed_data'] = ai_parsed_data
+        
+        # 🔥 MANA SHU QATOR QOLIB KETGAN EDI: Matnni chiroyli qilib tayyorlash
+        formatted_json = json.dumps(ai_parsed_data, indent=2, ensure_ascii=False)
         
         # Tugmalar
         markup = InlineKeyboardMarkup(row_width=2)
@@ -238,7 +239,7 @@ Misol: [{"name": "M DESPINA Антрацит Выключатель одинар
     except Exception as e:
         bot.send_message(chat_id, f"❌ AI xatosi yuz berdi: {str(e)}")
         main_menu(message)
-
+        
 @bot.callback_query_handler(func=lambda call: call.data in ['ai_approve', 'ai_edit'])
 def handle_ai_approval(call):
     chat_id = call.message.chat.id
