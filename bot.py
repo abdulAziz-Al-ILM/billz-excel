@@ -49,7 +49,7 @@ CATEGORIES_DB = {
 }
 
 CATEGORIES = list(CATEGORIES_DB.keys())
-UNITS = ["dona", "metr", "litr", "kg", "quti", "komplekt", "rulon"]
+UNITS = ["dona", "metr", "litr", "kg", "quti", "komplekt", "rulon", "sht"]
 
 def is_allowed(message):
     if str(message.chat.id) not in ALLOWED_USERS:
@@ -137,33 +137,28 @@ def process_ai_image(message):
         downloaded_file = bot.download_file(file_info.file_path)
         base64_image = base64.b64encode(downloaded_file).decode('utf-8')
 
-        prompt = """Sen professional OCR tizimisan. Rasmda qurilish mollari jadvali berilgan. Jadvalni 1-qatoridan boshlab eng oxirgi qatorigacha (taxminan 40 ta) qat'iy o'qib chiq. Hech qaysi qator qolib ketmasin!
+        # YANADA MUKAMMAL, YASHIK RAQAMINI OLUVCHI PROMPT
+        prompt = """Sen professional OCR tizimisan. Rasmda qurilish mollari jadvali berilgan.
+Jadvalning 1-ustuni qog'oz bilan yopilgan, shuning uchun eng birinchi ko'rinib turgan ustun bu - Mahsulot NOMI.
+Jadvalni oxirigacha qat'iy o'qib chiq.
 
-QOG'OZ VA YOZUVLAR BILAN ISHLASH (MUHIM):
-- Matnlar ustidan ruchkada chizilgan belgilarni ('V', krestik, to'lqinli chiziqlar) UMEMAN KO'RMASLIKKA OL.
-- Ular so'zning bir qismi emas. Masalan, 'M' harfi ustiga chizilgan bo'lsa, uni 'B/p' deb o'qima, u 'M' deb qoladi (M DESPINA).
-- Harflar qanday bosma yozilgan bo'lsa, xuddi shunday toza qilib ko'chir.
-
-USTUNLARNI QANDAY OLISH KЕRAK:
-- 1-ustun (Raqam) -> Tashlab yubor!
-- 2-ustun (Nomi) -> Asliga tegmasdan ol.
-- 3-ustun (Shtrixkod) -> Tashlab yubor!
-- 4-ustun (Qoldiq/Soni) -> "10,000 шт" ni "10" deb butun son qilib ol.
-- 5-ustun (O'lchov birligi) -> Faqat dona, metr, litr, kg, quti, komplekt, rulon, sht deganlaridan birini yoz.
-- 6-ustun (Narx) -> "130,5000" ni "130.5" qilib float turida yoz.
-- 7-ustun -> Tashlab yubor!
+USTUNLAR KETMA-KETLIGI VA ULARNI QANDAY OLISH KЕRAK:
+- 1-ustun (Nomi): Asliga tegmasdan ol (Masalan: "MAXI 10-06524 1/2...").
+- 2-ustun (Kod/Shtrixkod): Odatda 10 xonali son (8481803900 kabi) -> Buni tashlab yubor!
+- 3-ustun (Soni va o'lchov birligi): Masalan "4,000 шт". Bundan sonini (4) va birligini (sht) alohida ajratib ol.
+- 4-ustun (Kelish narxi): Masalan "251,1000" ni "251.1" deb butun/kasr qilib ol.
+- 5-ustun (Sotish narxi): Masalan "1 004,40" -> Buni tashlab yubor!
+- 6-ustun (Yashik raqami): Eng oxirida ko'k ruchkada qalin qilib qo'lda yozilgan raqamlar (Masalan: 326, 320, 310, 248). Buni "box_number" deb ol.
 
 Qo'shimcha maydonlar (o'zing top):
-- "optom_limit": nechtadan keyin optom bo'lishi (raqam, masalan 5)
-- "signal": qancha qolganda ogohlantirsin (raqam, masalan 2)
-- "brand": nomidan top, agar nomida brend bo'lmasa "-" qo'y (Misollar: DESPINA, People, VOLTAGE)
-- "category": faqat quyidagilardan birini tanla: elektr jihozlari, santexnika, qurilish qorishmalari, bo'yoqlar va emulsiya, kafel va plitkalar, asbob-uskunalar, issiqlik izolyatsiyasi, xo'jalik mollari, pena, silikon va yelimlar, pardozlash materiallari, mayda qotirish vositalari, plintus va profillar, muhandislik tizimlari, boshqa.
+- "optom_limit": nechtadan keyin optom bo'lishi (standart 5 qo'y).
+- "signal": qancha qolganda ogohlantirsin (standart 2 qo'y).
+- "brand": nomidan top, yo'q bo'lsa "-" qo'y (Misol: MAXI).
+- "category": santexnika, elektr jihozlari, va hokazo...
 
 NATIJA FORMATI QAT'IY TALABI (Buzish taqiqlanadi):
-JSON kalitlari FAqat inglizcha bo'lishi shart! (name, stock, unit, cost, optom_limit, signal, brand, category). "nomi", "narxi" kabi so'zlarni ishlatma!
-
-Menga faqat valid JSON massiv qaytar, boshida [ bilan boshlanib oxirida ] bilan tugasin. Hech qanday ```json belgilari va qo'shimcha izohlar bo'lmasin.
-Misol: [{"name": "M DESPINA Антрацит Выключатель одинарный (1ый)", "stock": 10, "unit": "sht", "cost": 130.5, "optom_limit": 5, "signal": 2, "brand": "DESPINA", "category": "elektr jihozlari"}]
+Faqat JSON massiv qaytar. Kalitlar qat'iy inglizcha: name, stock, unit, cost, box_number, optom_limit, signal, brand, category.
+Misol: [{"name": "MAXI 10-06524 1/2 Кран шар", "stock": 4, "unit": "sht", "cost": 251.1, "box_number": "326", "optom_limit": 5, "signal": 2, "brand": "MAXI", "category": "santexnika"}]
 """
 
         headers = {
@@ -187,7 +182,6 @@ Misol: [{"name": "M DESPINA Антрацит Выключатель одинар
         }
         
         # 🎯 100% KAFOLATLANGAN USUL (Shifrlangan manzil)
-        # Hech qanday chat yoki redaktor buni ssilka deb o'zgartira olmaydi:
         encoded_url = "aHR0cHM6Ly9hcGkub3BlbmFpLmNvbS92MS9jaGF0L2NvbXBsZXRpb25z"
         openai_url = base64.b64decode(encoded_url).decode('utf-8')
         
@@ -212,14 +206,11 @@ Misol: [{"name": "M DESPINA Антрацит Выключатель одинар
         except Exception as e:
             raise Exception(f"JSON o'qishda xato: {str(e)}\nAI JAVOBI: {json_str[:500]}")
         
-        # Ma'lumotni eslab qolish (Tasdiqlash uchun)
         if chat_id not in drafts: drafts[chat_id] = {}
         drafts[chat_id]['ai_parsed_data'] = ai_parsed_data
         
-        # 🔥 MANA SHU QATOR QOLIB KETGAN EDI: Matnni chiroyli qilib tayyorlash
         formatted_json = json.dumps(ai_parsed_data, indent=2, ensure_ascii=False)
         
-        # Tugmalar
         markup = InlineKeyboardMarkup(row_width=2)
         markup.add(
             InlineKeyboardButton("✅ To'g'ri, kiritish", callback_data="ai_approve"),
@@ -228,7 +219,6 @@ Misol: [{"name": "M DESPINA Антрацит Выключатель одинар
         
         bot.delete_message(chat_id, msg_wait.message_id)
         
-        # Matn uzayib ketsa xato bermasligi uchun kesib yuboramiz (Telegram limiti)
         send_text = formatted_json
         if len(send_text) > 3900:
             send_text = send_text[:3900] + "\n\n... (Matn juda uzun, qolgani qisqartirildi)]"
@@ -243,7 +233,7 @@ Misol: [{"name": "M DESPINA Антрацит Выключатель одинар
     except Exception as e:
         bot.send_message(chat_id, f"❌ AI xatosi yuz berdi: {str(e)}")
         main_menu(message)
-        
+
 @bot.callback_query_handler(func=lambda call: call.data in ['ai_approve', 'ai_edit'])
 def handle_ai_approval(call):
     chat_id = call.message.chat.id
@@ -259,10 +249,8 @@ def handle_ai_approval(call):
 def process_ai_manual_edit(message):
     chat_id = message.chat.id
     try:
-        # Foydalanuvchi yuborgan matnni tozalash va o'qish
         text = message.text.strip().replace('```json', '').replace('```', '')
         edited_data = json.loads(text)
-        
         bot.send_message(chat_id, "⏳ Tahrirlangan ro'yxat qabul qilindi. Billzga yuklanmoqda...")
         execute_ai_insertion(chat_id, edited_data)
     except Exception as e:
@@ -284,7 +272,7 @@ def execute_ai_insertion(chat_id, data_list):
         if auto_save_to_billz(chat_id, item):
             success_count += 1
         
-        time.sleep(1.5) # Spamdan himoya
+        time.sleep(1.5) 
             
     bot.send_message(chat_id, f"🎉 Jarayon to'liq tugadi!\n✅ Muvaffaqiyatli: {success_count} ta\n⏭ O'tkazilgan (dublikat): {skipped_count} ta")
     main_menu(type('Obj', (object,), {'chat': type('ChatObj', (object,), {'id': chat_id})})())
@@ -321,18 +309,26 @@ def auto_save_to_billz(chat_id, p_data):
     
     retail_val = round(cost_val * 1.10, 2)
     wholesale_val = round(cost_val * 1.07, 2)
-    ai_article = f"AI-{int(time.time())}-{random.randint(10, 99)}"
+    
+    # 💥 YASHIK RAQAMIDAN AVTOMATIK 10 XONALI ARTIKUL YASASH:
+    box_number_raw = str(p_data.get('box_number', '0')).strip()
+    # Faqat raqamlarni ajratib olish (har ehtimolga qarshi harflar bo'lsa tozalaydi)
+    box_number_clean = ''.join(filter(str.isdigit, box_number_raw))
+    if not box_number_clean: box_number_clean = '0'
+    
+    # "0001" oldiga qo'yiladi, qolgan qismi nollar bilan 6 xonaga to'ldiriladi -> Jami 10 xona.
+    formatted_article = f"0001{box_number_clean.zfill(6)}"
     
     cat_id = CATEGORIES_DB.get(category_name, "")
     cat_list = [cat_id] if cat_id else []
 
     payload = {
-        "barcode": ai_article,
+        "barcode": formatted_article,
         "brand_id": "",
         "brand_name": brand_name,
         "category_ids": cat_list,
         "company_id": COMPANY_ID,
-        "description": f"Katalog: {category_name} | Brend: {brand_name} | Optom: {optom_limit_val} tadan | Izoh: AI ro'yxatdan kiritdi",
+        "description": f"Katalog: {category_name} | Brend: {brand_name} | Yashik raqami: {box_number_clean} | Optom: {optom_limit_val} tadan | Izoh: AI ro'yxatdan kiritdi",
         "has_expiration_date": False,
         "images": [], 
         "free_price": False,
@@ -353,7 +349,7 @@ def auto_save_to_billz(chat_id, p_data):
         "shipments": [{"has_trigger": False, "measurement_value": stock_val, "shop_id": SHOP_ID, "small_left_measurement_value": signal_val, "total_measurement_value": stock_val}],
         "shop_measurement_values": [{"has_trigger": False, "measurement_value": stock_val, "shop_id": SHOP_ID, "small_left_measurement_value": signal_val, "total_measurement_value": stock_val}],
         "shop_prices": [{"shop_id": SHOP_ID, "retail_price": retail_val, "supply_price": cost_val, "wholesale_price": wholesale_val, "min_price": 0, "max_price": 0, "retail_currency": "KGS", "supply_currency": "KGS", "wholesale_currency": "KGS", "currency": "KGS"}],
-        "sku": ai_article,
+        "sku": formatted_article,
         "supplier_ids": [],
         "tax_tariff_id": "",
         "variants": [],
@@ -364,14 +360,13 @@ def auto_save_to_billz(chat_id, p_data):
     try:
         response = execute_billz_request('POST', BILLZ_API_POST_URL, payload)
         
-        # 🔎 ASL XATONI KO'RSATUVCHI QISM
         if response.status_code not in [200, 201]:
             bot.send_message(chat_id, f"⚠️ '{full_name}' BILLZ TOMONIDAN RAD ETILDI:\nStatus: {response.status_code}\nJavob: {response.text[:400]}")
             return False
             
-        p_data['article'] = ai_article
+        p_data['article'] = formatted_article
         p_data['base_name'] = full_name
-        db[ai_article] = p_data
+        db[formatted_article] = p_data
         return True
     except Exception as e:
         bot.send_message(chat_id, f"❌ Dasturiy xato: {str(e)}")
