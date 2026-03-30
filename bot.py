@@ -118,7 +118,7 @@ def router(message):
         start_variation(message)
 
 # ==========================================
-# 🤖 HAQIQIY OPENAI PARALLEL FUNKSIYASI
+# 🤖 HAQIQIY OPENAI PARALLEL FUNKSIYASI VA TASDIQLASH (REVIEW)
 # ==========================================
 def start_ai_upload(message):
     msg = bot.send_message(message.chat.id, "📄 Mahsulotlar ro'yxati (jadval) rasmini yuboring:")
@@ -129,7 +129,7 @@ def process_ai_image(message):
     if not message.photo:
         return bot.send_message(chat_id, "❌ Iltimos, faqat rasm yuboring!")
 
-    msg_wait = bot.send_message(chat_id, "⏳ Rasm qabul qilindi. AI jadvalni o'qib, tahlil qilmoqda... (Bu 10-20 soniya olishi mumkin, kuting)")
+    msg_wait = bot.send_message(chat_id, "⏳ Rasm qabul qilindi. AI jadvalni o'qib, tahlil qilmoqda... (Bu 10-20 soniya olishi mumkin)")
     
     try:
         file_info = bot.get_file(message.photo[-1].file_id)
@@ -174,9 +174,8 @@ NATIJA FORMATI: Menga faqat valid JSON massiv (array) qaytar, atrofida hech qand
             "temperature": 0.1
         }
         
-        # ❗️ DIQQAT: Ssilka toza holatda turibdi, qavslar yo'q!
-        # Ssilkani ikkiga bo'lib yozamiz, tizim uni avtomatik qavsga ololmaydi:
-        openai_url = "https://" + "api.openai.com/v1/chat/completions"
+        # Ssilka ikkiga bo'lindi (Avtomatik havola bo'lib qolmasligi uchun)
+        openai_url = "https://" + "[api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)"
         response = requests.post(openai_url, headers=headers, json=payload)
         response_data = response.json()
         
@@ -188,43 +187,91 @@ NATIJA FORMATI: Menga faqat valid JSON massiv (array) qaytar, atrofida hech qand
         
         ai_parsed_data = json.loads(ai_response_text)
         
-        bot.edit_message_text(f"✅ AI {len(ai_parsed_data)} ta mahsulotni aniqladi! Billzga yuklash boshlandi...", chat_id, msg_wait.message_id)
+        # Ma'lumotni eslab qolish (Tasdiqlash uchun)
+        if chat_id not in drafts: drafts[chat_id] = {}
+        drafts[chat_id]['ai_parsed_data'] = ai_parsed_data
         
-        success_count = 0
-        skipped_count = 0
+        # Chiroyli qilib matn formatiga solamiz (Foydalanuvchi o'qishi oson bo'lishi uchun indent=2)
+        formatted_json = json.dumps(ai_parsed_data, indent=2, ensure_ascii=False)
         
-        for item in ai_parsed_data:
-            full_name = str(item.get('name', '')).strip()
+        # Tugmalar
+        markup = InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            InlineKeyboardButton("✅ To'g'ri, kiritish", callback_data="ai_approve"),
+            InlineKeyboardButton("✏️ Xato, tahrirlayman", callback_data="ai_edit")
+        )
+        
+        bot.delete_message(chat_id, msg_wait.message_id)
+        
+        # Matn uzayib ketsa xato bermasligi uchun kesib yuboramiz (Telegram limiti)
+        send_text = formatted_json
+        if len(send_text) > 3900:
+            send_text = send_text[:3900] + "\n\n... (Matn juda uzun, qolgani qisqartirildi)]"
             
-            # 🔥 DUBLIKATNI TEKSHIRISH
-            if check_product_exists(full_name):
-                bot.send_message(chat_id, f"⏭ O'tkazib yuborildi (bazada bor): {full_name}")
-                skipped_count += 1
-                continue
-                
-            if auto_save_to_billz(chat_id, item):
-                success_count += 1
-            
-            time.sleep(1.5) # Spamdan himoya
-                
-        bot.send_message(chat_id, f"🎉 Jarayon tugadi!\nQo'shildi: {success_count} ta\nO'tkazib yuborildi: {skipped_count} ta")
-        main_menu(message)
+        bot.send_message(
+            chat_id, 
+            f"🔎 **AI RO'YXATNI O'QIDI!** Jami {len(ai_parsed_data)} ta tovar.\n\nQuyidagi ro'yxatni Billzga kiritmoqchiman. Tekshirib ko'ring:\n\n`{send_text}`", 
+            reply_markup=markup, 
+            parse_mode="Markdown"
+        )
         
     except Exception as e:
         bot.send_message(chat_id, f"❌ AI xatosi yuz berdi: {str(e)}")
         main_menu(message)
 
+@bot.callback_query_handler(func=lambda call: call.data in ['ai_approve', 'ai_edit'])
+def handle_ai_approval(call):
+    chat_id = call.message.chat.id
+    if call.data == 'ai_approve':
+        bot.edit_message_text("⏳ Tasdiqlandi! Billzga yuklash boshlandi (1.5 soniyalik interval bilan)...", chat_id, call.message.message_id)
+        data_list = drafts.get(chat_id, {}).get('ai_parsed_data', [])
+        execute_ai_insertion(chat_id, data_list)
+        
+    elif call.data == 'ai_edit':
+        bot.edit_message_text("✏️ Yuqoridagi matnni (JSON) nusxalab oling. Kerakli joylarini to'g'rilab, menga javob tariqasida qaytarib yuboring:", chat_id, call.message.message_id)
+        bot.register_next_step_handler(call.message, process_ai_manual_edit)
+
+def process_ai_manual_edit(message):
+    chat_id = message.chat.id
+    try:
+        # Foydalanuvchi yuborgan matnni tozalash va o'qish
+        text = message.text.strip().replace('```json', '').replace('```', '')
+        edited_data = json.loads(text)
+        
+        bot.send_message(chat_id, "⏳ Tahrirlangan ro'yxat qabul qilindi. Billzga yuklanmoqda...")
+        execute_ai_insertion(chat_id, edited_data)
+    except Exception as e:
+        msg = bot.send_message(chat_id, "❌ Matn formati buzilgan! Siz kiritgan yozuvni tizim o'qiy olmadi (JSON qoidasi buzilgan). Iltimos, xatoni to'g'rilab qaytadan yuboring:")
+        bot.register_next_step_handler(msg, process_ai_manual_edit)
+
+def execute_ai_insertion(chat_id, data_list):
+    success_count = 0
+    skipped_count = 0
+    
+    for item in data_list:
+        full_name = str(item.get('name', '')).strip()
+        
+        if check_product_exists(full_name):
+            bot.send_message(chat_id, f"⏭ O'tkazib yuborildi (Bazada oldin kiritilgan): {full_name}")
+            skipped_count += 1
+            continue
+            
+        if auto_save_to_billz(chat_id, item):
+            success_count += 1
+        
+        time.sleep(1.5) # Spamdan himoya
+            
+    bot.send_message(chat_id, f"🎉 Jarayon to'liq tugadi!\n✅ Muvaffaqiyatli: {success_count} ta\n⏭ O'tkazilgan (dublikat): {skipped_count} ta")
+    main_menu(type('Obj', (object,), {'chat': type('ChatObj', (object,), {'id': chat_id})})())
+
 def check_product_exists(product_name):
-    """ Billz bazasidan mahsulot nomini qidirib, oldin kiritilgan yoki yo'qligini aniqlaydi """
-    if not product_name:
-        return False
+    if not product_name: return False
     try:
         url = f"{BILLZ_API_BASE}/product?name={requests.utils.quote(product_name)}"
         response = execute_billz_request('GET', url)
         if response.status_code == 200:
             data = response.json()
             if 'data' in data and len(data['data']) > 0:
-                # Agar nom to'g'ri kelsa, dublikat deb hisoblaymiz
                 for item in data['data']:
                     if item.get('name', '').lower() == product_name.lower():
                         return True
@@ -234,24 +281,18 @@ def check_product_exists(product_name):
 
 def auto_save_to_billz(chat_id, p_data):
     full_name = str(p_data.get('name', 'Nomsiz')).strip()
-    try:
-        cost_val = float(p_data.get('cost', 0))
-    except (ValueError, TypeError):
-        cost_val = 0.0
+    try: cost_val = float(p_data.get('cost', 0))
+    except: cost_val = 0.0
         
-    try:
-        stock_val = float(p_data.get('stock', 0))
-    except (ValueError, TypeError):
-        stock_val = 0.0
+    try: stock_val = float(p_data.get('stock', 0))
+    except: stock_val = 0.0
 
     brand_name = str(p_data.get('brand', '-')).strip()
     category_name = str(p_data.get('category', 'boshqa')).strip()
     optom_limit_val = str(p_data.get('optom_limit', '5'))
     
-    try:
-        signal_val = float(p_data.get('signal', 1))
-    except (ValueError, TypeError):
-        signal_val = 1.0
+    try: signal_val = float(p_data.get('signal', 1))
+    except: signal_val = 1.0
     
     retail_val = round(cost_val * 1.10, 2)
     wholesale_val = round(cost_val * 1.07, 2)
@@ -297,20 +338,22 @@ def auto_save_to_billz(chat_id, p_data):
 
     try:
         response = execute_billz_request('POST', BILLZ_API_POST_URL, payload)
-        if response.status_code in [200, 201]:
-            p_data['article'] = ai_article
-            p_data['base_name'] = full_name
-            db[ai_article] = p_data
-            return True
-        else:
-            bot.send_message(chat_id, f"⚠️ '{full_name}' Billzga o'tmadi!\nSabab: {response.text}")
+        
+        # 🔎 ASL XATONI KO'RSATUVCHI QISM
+        if response.status_code not in [200, 201]:
+            bot.send_message(chat_id, f"⚠️ '{full_name}' BILLZ TOMONIDAN RAD ETILDI:\nStatus: {response.status_code}\nJavob: {response.text[:400]}")
             return False
+            
+        p_data['article'] = ai_article
+        p_data['base_name'] = full_name
+        db[ai_article] = p_data
+        return True
     except Exception as e:
         bot.send_message(chat_id, f"❌ Dasturiy xato: {str(e)}")
         return False
 
 # ==========================================
-# 3. ZANJIR (QO'LDA YARATISH)
+# 3. ZANJIR (QO'LDA YARATISH - ORIGINAL)
 # ==========================================
 def start_new_product(message):
     chat_id = message.chat.id
@@ -421,7 +464,9 @@ def step_comment(message):
     drafts[chat_id]['comment'] = message.text
     save_to_billz(message)
 
-# ❗️ QO'LDA KIRITISH UCHUN SAVE_TO_BILLZ FUNKSIYASI QAYTARILDI
+# ==========================================
+# 🚀 4. BILLZ 2.0 GA MUKAMMAL YUBORISH (QO'LDA)
+# ==========================================
 def save_to_billz(message):
     chat_id = message.chat.id
     d = drafts[chat_id]
