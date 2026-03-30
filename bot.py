@@ -175,8 +175,9 @@ NATIJA FORMATI: Menga faqat valid JSON massiv (array) qaytar, atrofida hech qand
         }
         
         # Ssilka ikkiga bo'lindi (Avtomatik havola bo'lib qolmasligi uchun)
-        openai_url = "https://" + "[api.openai.com/v1/chat/completions](https://api.openai.com/v1/chat/completions)"
-        response = requests.post(openai_url, headers=headers, json=payload)
+        # Tizim ssilka ekanligini umuman taniy olmasligi uchun uni bo'laklab yig'amiz:
+        p1, p2, p3 = "https://api", ".openai.com", "/v1/chat/completions"
+        response = requests.post(p1 + p2 + p3, headers=headers, json=payload)
         response_data = response.json()
         
         if 'error' in response_data:
